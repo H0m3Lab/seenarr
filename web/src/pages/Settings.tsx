@@ -16,21 +16,13 @@ interface Run {
 interface Status {
   sonarr: { configured: boolean; url: string; busy: boolean; minutes: number; last: Run | null };
   metadata: { provider: string; busy: boolean; minutes: number; last: Run | null };
+  plex: { configured: boolean; url: string; busy: boolean; minutes: number; last: Run | null; webhookConfigured: boolean; webhookLastSeen: string | null };
   counts: Record<string, number>;
-}
-
-interface Review {
-  id: number;
-  type: string;
-  show_id: number | null;
-  show_title: string | null;
-  summary: string;
-  updated_at: string;
 }
 
 const when = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : 'Never');
 
-function Connection({ source, title, detail, busy, minutes, last }: { source: 'sonarr' | 'metadata'; title: string; detail: string; busy: boolean; minutes: number; last: Run | null }) {
+function Connection({ source, title, detail, busy, minutes, last }: { source: 'sonarr' | 'metadata' | 'plex'; title: string; detail: string; busy: boolean; minutes: number; last: Run | null }) {
   const qc = useQueryClient();
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [mins, setMins] = useState(String(minutes));
@@ -68,12 +60,12 @@ export function Settings() {
   const { data } = useQuery({
     queryKey: ['status'],
     queryFn: () => api<Status>('/settings/status'),
-    refetchInterval: (q) => (q.state.data?.sonarr.busy || q.state.data?.metadata.busy ? 3000 : false),
+    refetchInterval: (q) => (q.state.data?.sonarr.busy || q.state.data?.metadata.busy || q.state.data?.plex.busy ? 3000 : false),
   });
-  const log = useQuery({ queryKey: ['log', data?.sonarr.busy, data?.metadata.busy], queryFn: () => api<Run[]>('/sync-log') });
-  const review = useQuery({ queryKey: ['review', data?.sonarr.busy, data?.metadata.busy], queryFn: () => api<Review[]>('/review') });
+  const log = useQuery({ queryKey: ['log', data?.sonarr.busy, data?.metadata.busy, data?.plex.busy], queryFn: () => api<Run[]>('/sync-log') });
   if (!data) return <p className="muted">Loading…</p>;
   const c = data.counts;
+  const toReview = c.reviewOpen + c.unmatchedOpen;
 
   return (
     <>
@@ -88,16 +80,22 @@ export function Settings() {
       <Connection source="metadata" title="Metadata (TVmaze)" busy={data.metadata.busy} minutes={data.metadata.minutes} last={data.metadata.last}
         detail="Free, no key needed. Posters are stored on the server." />
 
+      <Connection source="plex" title="Plex" busy={data.plex.busy} minutes={data.plex.minutes} last={data.plex.last}
+        detail={data.plex.configured ? `Read-only, at ${data.plex.url}. Token is set. Only your account's watches count.` : 'No token set yet.'} />
       <section className="card">
-        <h2>Needs review <span className="count">{review.data?.length ?? 0}</span></h2>
-        {!review.data?.length && <p className="muted">Nothing to review.</p>}
-        <ul className="plain">
-          {review.data?.map((r) => (
-            <li key={r.id}>
-              {r.show_id ? <Link to={`/shows/${r.show_id}`}>{r.show_title}</Link> : null} {r.summary}
-            </li>
-          ))}
-        </ul>
+        <h2>Plex webhook</h2>
+        <p className="muted">
+          {data.plex.webhookConfigured ? 'Ready to receive. ' : 'Not set up yet. '}
+          {data.plex.webhookLastSeen ? `Last heard from Plex: ${when(data.plex.webhookLastSeen)}.` : 'Nothing received from Plex yet.'}
+          {' '}Scheduled syncs catch anything it misses.
+        </p>
+      </section>
+
+      <section className="card">
+        <h2>Needs review <span className="count">{toReview}</span></h2>
+        {toReview > 0
+          ? <p>{c.reviewOpen} show issue{c.reviewOpen === 1 ? '' : 's'} and {c.unmatchedOpen} unplaced watch{c.unmatchedOpen === 1 ? '' : 'es'}. <Link to="/review">Review them</Link></p>
+          : <p className="muted">Nothing to review.</p>}
       </section>
 
       <section className="card">

@@ -9,6 +9,7 @@ import { MyShows } from './pages/MyShows';
 import { ShowPage } from './pages/Show';
 import { AddShow } from './pages/AddShow';
 import { Settings } from './pages/Settings';
+import { ReviewPage } from './pages/Review';
 import './styles.css';
 
 const client = new QueryClient({
@@ -46,6 +47,7 @@ function App() {
           <Route path="/shows/:id" element={<ShowPage />} />
           <Route path="/add" element={<AddShow />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/review" element={<ReviewPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -5,13 +5,26 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { ZodError } from 'zod';
 import { config } from './config.js';
-import { registerRoutes } from './routes.js';
+import { registerRoutes, WEBHOOK_PREFIX } from './routes.js';
 import { startScheduler } from './services/jobs.js';
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, trustProxy: true, bodyLimit: 1024 * 1024 });
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL ?? 'info',
+    // The webhook URL contains its secret, so it must never reach the logs.
+    serializers: {
+      req: (r) => ({ method: r.method, url: r.url.startsWith(WEBHOOK_PREFIX) ? `${WEBHOOK_PREFIX}[hidden]` : r.url }),
+    },
+  },
+  trustProxy: true,
+  bodyLimit: 1024 * 1024,
+});
 
 await app.register(cookie);
 await app.register(rateLimit, { global: false });
+
+// Only Plex's webhook sends multipart; its route parses the raw body itself.
+app.addContentTypeParser('multipart/form-data', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
 app.addHook('onSend', async (_req, reply, payload) => {
   reply.header('X-Content-Type-Options', 'nosniff');

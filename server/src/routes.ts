@@ -1,18 +1,22 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import path from 'node:path';
 import { verify } from '@node-rs/argon2';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from './config.js';
-import { db, nowIso, setSetting } from './db.js';
+import { db, getSetting, nowIso, setSetting } from './db.js';
 import { correctWatchDate, setWatched, type WatchDate } from './services/events.js';
-import { getShowIds } from './services/identity.js';
+import { addShowIds, closeReview, getShowIds } from './services/identity.js';
 import { isBusy, minutesFor, runJob } from './services/jobs.js';
+import { linkSonarr } from './services/link.js';
+import { assignUnmatched, bulkAssign, handleWebhook, parseWebhook, testPlex } from './services/plex.js';
 import { allSummaries, dashboard, episodesForShow, isAired, summarise, type ShowRow } from './services/progress.js';
 import { testSonarr } from './services/sonarr.js';
 import { addShow, refreshShow, searchShows, testTvmaze } from './services/tvmaze.js';
 
+export const WEBHOOK_PREFIX = '/api/v1/webhooks/';
+const SOURCES = ['sonarr', 'metadata', 'plex'] as const;
 const COOKIE = 'tv_session';
 const SESSION_DAYS = 30;
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -38,10 +42,30 @@ export function registerRoutes(app: FastifyInstance) {
 
   app.addHook('onRequest', async (req) => {
     const url = req.url.split('?')[0];
-    if (!url.startsWith('/api/') || PUBLIC.has(url)) return;
+    if (!url.startsWith('/api/') || PUBLIC.has(url) || url.startsWith(WEBHOOK_PREFIX)) return;
     if (!validSession(req)) throw fail(401, 'Not signed in');
     // A custom header can't be sent cross-site without CORS, which we don't enable.
     if (req.method !== 'GET' && req.headers['x-tv-tracker'] !== '1') throw fail(403, 'Missing request header');
+  });
+
+  // Plex can't sign in, so the unguessable URL is the credential. It is kept out of the logs.
+  app.post('/api/v1/webhooks/plex/:secret', { bodyLimit: 20 * 1024 * 1024, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const given = Buffer.from((req.params as { secret: string }).secret);
+    const expected = Buffer.from(config.plexWebhookSecret);
+    if (!expected.length || given.length !== expected.length || !timingSafeEqual(given, expected)) throw fail(404, 'Not found');
+    const hook = parseWebhook(req.body as Buffer, String(req.headers['content-type'] ?? ''));
+    if (!hook) throw fail(400, 'Unreadable payload');
+    setSetting('plex_webhook_last_seen', nowIso());
+    // Answer straight away; a failure here is caught by the next reconciliation.
+    void handleWebhook(hook)
+      .then((result) => {
+        if (result === 'ignored') return;
+        db.prepare(`INSERT INTO sync_runs (source, started_at, finished_at, status, summary) VALUES ('plex-webhook', ?, ?, 'ok', ?)`).run(nowIso(), nowIso(), JSON.stringify({ result }));
+      })
+      .catch((err: Error) => {
+        db.prepare(`INSERT INTO sync_runs (source, started_at, finished_at, status, error) VALUES ('plex-webhook', ?, ?, 'error', ?)`).run(nowIso(), nowIso(), err.message);
+      });
+    return reply.code(200).send({ ok: true });
   });
 
   app.get('/api/v1/health', async () => {
@@ -165,31 +189,41 @@ export function registerRoutes(app: FastifyInstance) {
       (SELECT COUNT(*) FROM shows WHERE metadata_state = 'pending') AS metadataPending,
       (SELECT COUNT(*) FROM episodes) AS episodes,
       (SELECT COUNT(*) FROM watch_events WHERE kind = 'watched' AND duplicate_of IS NULL) AS watchEvents,
-      (SELECT COUNT(*) FROM review_queue WHERE status = 'open') AS reviewOpen`).get();
+      (SELECT COUNT(*) FROM review_queue WHERE status = 'open') AS reviewOpen,
+      (SELECT COUNT(*) FROM unmatched_watches WHERE status = 'open') AS unmatchedOpen`).get();
     return {
       // Only whether keys exist, never the keys.
       sonarr: { configured: !!(config.sonarrUrl && config.sonarrKey), url: config.sonarrUrl, busy: isBusy('sonarr'), minutes: minutesFor('sonarr'), last: last('sonarr') },
       metadata: { provider: 'TVmaze', busy: isBusy('metadata'), minutes: minutesFor('metadata'), last: last('metadata') },
+      plex: {
+        configured: !!(config.plexUrl && config.plexToken),
+        url: config.plexUrl,
+        busy: isBusy('plex'),
+        minutes: minutesFor('plex'),
+        last: last('plex'),
+        webhookConfigured: !!config.plexWebhookSecret,
+        webhookLastSeen: getSetting('plex_webhook_last_seen', '') || null,
+      },
       counts,
     };
   });
 
   app.put('/api/v1/settings/frequency', async (req) => {
-    const b = z.object({ source: z.enum(['sonarr', 'metadata']), minutes: z.number().int().min(5).max(10080) }).parse(req.body);
+    const b = z.object({ source: z.enum(SOURCES), minutes: z.number().int().min(5).max(10080) }).parse(req.body);
     setSetting(`sync_minutes_${b.source}`, String(b.minutes));
     return { ok: true };
   });
 
   app.post('/api/v1/sync/:source', async (req) => {
-    const { source } = z.object({ source: z.enum(['sonarr', 'metadata']) }).parse(req.params);
+    const { source } = z.object({ source: z.enum(SOURCES) }).parse(req.params);
     void runJob(source);
     return { started: true };
   });
 
   app.post('/api/v1/test/:source', async (req) => {
-    const { source } = z.object({ source: z.enum(['sonarr', 'metadata']) }).parse(req.params);
+    const { source } = z.object({ source: z.enum(SOURCES) }).parse(req.params);
     try {
-      return { ok: true, message: await (source === 'sonarr' ? testSonarr() : testTvmaze()) };
+      return { ok: true, message: await (source === 'sonarr' ? testSonarr() : source === 'plex' ? testPlex() : testTvmaze()) };
     } catch (err) {
       return { ok: false, message: (err as Error).message };
     }
@@ -200,5 +234,59 @@ export function registerRoutes(app: FastifyInstance) {
 
   app.get('/api/v1/review', async () =>
     db.prepare(`SELECT r.id, r.type, r.show_id, r.summary, r.payload, r.created_at, r.updated_at, s.title AS show_title
-      FROM review_queue r LEFT JOIN shows s ON s.id = r.show_id WHERE r.status = 'open' ORDER BY r.updated_at DESC LIMIT 500`).all());
+      FROM review_queue r LEFT JOIN shows s ON s.id = r.show_id WHERE r.status = 'open' ORDER BY s.sort_title, r.id LIMIT 500`).all());
+
+  app.post('/api/v1/review/:id/resolve', async (req) => {
+    const id = z.coerce.number().int().parse((req.params as { id: string }).id);
+    const b = z.object({
+      action: z.enum(['trust_numbering', 'same_show', 'not_this_show', 'keep_sonarr', 'link_tvmaze']),
+      tvmazeId: z.number().int().positive().optional(),
+    }).parse(req.body);
+    const item = db.prepare('SELECT id, dedupe_key, type, show_id FROM review_queue WHERE id = ?').get(id) as { id: number; dedupe_key: string; type: string; show_id: number | null } | undefined;
+    if (!item || item.show_id === null) throw fail(404, 'No such review item');
+    const showId = item.show_id;
+    const setPolicy = (policy: string) => db.prepare('UPDATE shows SET metadata_policy = ?, updated_at = ? WHERE id = ?').run(policy, nowIso(), showId);
+    const markResolved = () => db.prepare(`UPDATE review_queue SET status = 'resolved', updated_at = ? WHERE id = ?`).run(nowIso(), id);
+
+    if (b.action === 'trust_numbering') {
+      db.prepare('UPDATE shows SET trust_numbering = 1, updated_at = ? WHERE id = ?').run(nowIso(), showId);
+      linkSonarr(showId); // closes the item by itself if every episode now lines up
+      void runJob('plex'); // pick up any watches this unblocks
+      return { ok: true };
+    }
+    if (b.action === 'same_show') setPolicy('ignore_id_conflicts');
+    if (b.action === 'not_this_show' || b.action === 'keep_sonarr') setPolicy('sonarr_only');
+    if (b.action === 'link_tvmaze') {
+      if (!b.tvmazeId) throw fail(400, 'Choose a TVmaze show');
+      setPolicy('ignore_id_conflicts');
+      const problems = addShowIds(showId, { tvmaze: b.tvmazeId }, true);
+      if (problems.length) throw fail(409, problems[0]);
+    }
+    markResolved();
+    closeReview(item.dedupe_key);
+    await refreshShow(showId).catch(() => undefined); // retried by the next metadata pass
+    void runJob('plex');
+    return { ok: true };
+  });
+
+  app.get('/api/v1/unmatched', async () =>
+    db.prepare(`SELECT u.id, u.source, u.show_id, u.reason, u.occurred_at_utc, u.payload, s.title AS show_title
+      FROM unmatched_watches u LEFT JOIN shows s ON s.id = u.show_id WHERE u.status = 'open'
+      ORDER BY s.sort_title, u.occurred_at_utc LIMIT 1000`).all());
+
+  app.post('/api/v1/unmatched/bulk-assign', async (req) => {
+    const b = z.object({ ids: z.array(z.number().int()).min(1).max(1000), showId: z.number().int() }).parse(req.body);
+    return bulkAssign(b.ids, b.showId);
+  });
+
+  app.post('/api/v1/unmatched/:id', async (req) => {
+    const id = z.coerce.number().int().parse((req.params as { id: string }).id);
+    const b = z.union([z.object({ episodeId: z.number().int() }), z.object({ dismiss: z.literal(true) })]).parse(req.body);
+    if ('dismiss' in b) {
+      db.prepare(`UPDATE unmatched_watches SET status = 'dismissed', updated_at = ? WHERE id = ?`).run(nowIso(), id);
+      return { ok: true };
+    }
+    if (!assignUnmatched(id, b.episodeId)) throw fail(404, 'No such watch or episode');
+    return { ok: true };
+  });
 }

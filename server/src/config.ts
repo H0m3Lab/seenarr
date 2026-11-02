@@ -12,6 +12,10 @@ export const config = {
     : '',
   sonarrUrl: (process.env.SONARR_URL ?? '').replace(/\/$/, ''),
   sonarrKey: process.env.SONARR_API_KEY ?? '',
+  plexUrl: (process.env.PLEX_URL ?? '').replace(/\/$/, ''),
+  plexToken: process.env.PLEX_TOKEN ?? '',
+  plexAccountId: num('PLEX_ACCOUNT_ID', 1), // the server owner's account on this Plex server
+  plexWebhookSecret: process.env.PLEX_WEBHOOK_SECRET ?? '',
   tvmazeUrl: (process.env.TVMAZE_URL ?? 'https://api.tvmaze.com').replace(/\/$/, ''),
   tvmazeGapMs: num('TVMAZE_GAP_MS', 700), // ~1.4 req/s: well under their limit, gentle on the router
   httpRetries: num('HTTP_RETRIES', 3),

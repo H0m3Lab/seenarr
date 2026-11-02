@@ -24,9 +24,9 @@ interface Ep {
   orphaned: number;
 }
 
-const MAX_AIR_DATE_DRIFT_DAYS = 7;
+export const MAX_AIR_DATE_DRIFT_DAYS = 7;
 
-const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
+export const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
 
 /**
  * Copies Sonarr's availability onto our episodes for one show. Touches availability only,
@@ -35,7 +35,7 @@ const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(
  */
 export function linkSonarr(showId: number) {
   db.transaction(() => {
-    const show = db.prepare('SELECT metadata_state FROM shows WHERE id = ?').get(showId) as { metadata_state: string };
+    const show = db.prepare('SELECT metadata_state, trust_numbering FROM shows WHERE id = ?').get(showId) as { metadata_state: string; trust_numbering: number };
     const sonarr = db.prepare('SELECT * FROM sonarr_episodes WHERE show_id = ?').all(showId) as SonarrEp[];
     const at = nowIso();
     db.prepare('UPDATE episodes SET has_file = 0, sonarr_monitored = 0 WHERE show_id = ? AND (has_file = 1 OR sonarr_monitored = 1)').run(showId);
@@ -85,7 +85,7 @@ export function linkSonarr(showId: number) {
         if (s.has_file || isAired(s, now)) mismatches.push({ sonarr: label, reason: 'not in TVmaze numbering' });
         continue;
       }
-      if (e.air_date && s.air_date && daysApart(e.air_date, s.air_date) > MAX_AIR_DATE_DRIFT_DAYS) {
+      if (!show.trust_numbering && e.air_date && s.air_date && daysApart(e.air_date, s.air_date) > MAX_AIR_DATE_DRIFT_DAYS) {
         mismatches.push({ sonarr: label, reason: `aired ${s.air_date} in Sonarr, ${e.air_date} in TVmaze` });
         continue;
       }

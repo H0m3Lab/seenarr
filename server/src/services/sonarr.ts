@@ -81,7 +81,8 @@ export async function syncSonarr() {
         id = createShow(s.title, 'discovered');
         added++;
       }
-      const problems = addShowIds(id, ids);
+      const policy = db.prepare('SELECT metadata_policy FROM shows WHERE id = ?').pluck().get(id) as string;
+      const problems = addShowIds(id, ids, policy !== 'auto');
       if (problems.length) {
         openReview(key, 'show_id_conflict', id, `Sonarr's IDs for "${s.title}" disagree`, { problems });
         conflicts++;

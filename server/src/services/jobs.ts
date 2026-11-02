@@ -1,10 +1,11 @@
 import { config } from '../config.js';
 import { db, getSetting, nowIso } from '../db.js';
+import { syncPlex } from './plex.js';
 import { syncSonarr } from './sonarr.js';
 import { syncMetadata } from './tvmaze.js';
 
-type Source = 'sonarr' | 'metadata';
-const runners: Record<Source, () => Promise<unknown>> = { sonarr: syncSonarr, metadata: syncMetadata };
+export type Source = 'sonarr' | 'metadata' | 'plex';
+const runners: Record<Source, () => Promise<unknown>> = { sonarr: syncSonarr, metadata: syncMetadata, plex: syncPlex };
 
 // Jobs run one at a time, in order, so a Sonarr import and a metadata pass never interleave.
 let chain: Promise<unknown> = Promise.resolve();
@@ -35,7 +36,7 @@ export function runJob(source: Source): Promise<void> {
   return run;
 }
 
-export const DEFAULT_MINUTES: Record<Source, number> = { sonarr: 60, metadata: 360 };
+export const DEFAULT_MINUTES: Record<Source, number> = { sonarr: 60, metadata: 360, plex: 60 };
 export const minutesFor = (s: Source) => Number(getSetting(`sync_minutes_${s}`, String(DEFAULT_MINUTES[s]))) || DEFAULT_MINUTES[s];
 
 const RETRY_AFTER_ERROR_MINUTES = 15;
@@ -49,8 +50,9 @@ export function startScheduler() {
   db.prepare(`UPDATE sync_runs SET status = 'error', finished_at = ?, error = 'Interrupted by restart' WHERE status = 'running'`).run(nowIso());
   if (config.disableScheduler) return;
   const tick = () => {
-    for (const s of ['sonarr', 'metadata'] as Source[]) {
+    for (const s of ['sonarr', 'metadata', 'plex'] as Source[]) {
       if (s === 'sonarr' && (!config.sonarrUrl || !config.sonarrKey)) continue;
+      if (s === 'plex' && (!config.plexUrl || !config.plexToken)) continue;
       const last = lastRun(s);
       // A failed run retries sooner than the normal interval, so an outage clears by itself.
       const wait = last?.status === 'error' ? Math.min(minutesFor(s), RETRY_AFTER_ERROR_MINUTES) : minutesFor(s);

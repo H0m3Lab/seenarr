@@ -148,6 +148,12 @@ function applyEpisodes(showId: number, list: TvmEpisode[]) {
 /** Fetch and merge one show. Provider failures throw and leave existing data untouched. */
 export async function refreshShow(showId: number): Promise<'ok' | 'not_found' | 'needs_review'> {
   const ids = getShowIds(showId);
+  const policy = db.prepare('SELECT metadata_policy FROM shows WHERE id = ?').pluck().get(showId) as string;
+  if (policy === 'sonarr_only') {
+    db.prepare(`UPDATE shows SET metadata_state = 'not_found', metadata_refreshed_at = ?, updated_at = ? WHERE id = ?`).run(nowIso(), nowIso(), showId);
+    linkSonarr(showId);
+    return 'not_found';
+  }
   let tv: TvmShow | null = null;
   if (ids.tvmaze) tv = await getJson<TvmShow>(`/shows/${ids.tvmaze}`);
   if (!tv && ids.tvdb) tv = await getJson<TvmShow>(`/lookup/shows?thetvdb=${encodeURIComponent(ids.tvdb)}`);
@@ -175,7 +181,7 @@ export async function refreshShow(showId: number): Promise<'ok' | 'not_found' | 
 
   const show = tv;
   const result = db.transaction(() => {
-    const problems = addShowIds(showId, externalIds(show));
+    const problems = addShowIds(showId, externalIds(show), policy !== 'auto');
     if (problems.length) {
       setState.run('needs_review', nowIso(), nowIso(), showId);
       openReview(conflictKey, 'show_id_conflict', showId, `TVmaze's "${show.name}" disagrees with what's stored`, { tvmazeId: show.id, problems });

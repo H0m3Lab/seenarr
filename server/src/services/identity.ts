@@ -29,7 +29,7 @@ export function getShowIds(showId: number): Partial<Record<Provider, string>> {
 }
 
 /** Attach IDs to a show. Returns the conflicts; a conflicting ID is never overwritten. */
-export function addShowIds(showId: number, ids: IdSet): string[] {
+export function addShowIds(showId: number, ids: IdSet, ignoreDifferences = false): string[] {
   const owner = db.prepare('SELECT show_id FROM show_ids WHERE provider = ? AND external_id = ?').pluck();
   const mine = db.prepare('SELECT external_id FROM show_ids WHERE show_id = ? AND provider = ?').pluck();
   const insert = db.prepare('INSERT INTO show_ids (show_id, provider, external_id) VALUES (?, ?, ?)');
@@ -39,8 +39,10 @@ export function addShowIds(showId: number, ids: IdSet): string[] {
     const existing = mine.get(showId, p) as string | undefined;
     if (ownerId === showId) continue;
     if (ownerId !== undefined) conflicts.push(`${p} ${v} already belongs to show ${ownerId}`);
-    else if (existing !== undefined) conflicts.push(`${p} is ${existing} here but the source says ${v}`);
-    else insert.run(showId, p, v);
+    else if (existing !== undefined) {
+      // Plex GUIDs differ per library item, and a reviewed show has been confirmed by you.
+      if (!ignoreDifferences && p !== 'plex') conflicts.push(`${p} is ${existing} here but the source says ${v}`);
+    } else insert.run(showId, p, v);
   }
   return conflicts;
 }
