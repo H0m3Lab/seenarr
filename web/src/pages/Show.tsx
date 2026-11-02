@@ -8,8 +8,8 @@ import { Badge, Poster, ProgressBar } from '../components';
 const dateToIso = (value: string) => new Date(`${value}T12:00:00`).toISOString();
 const isoToDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-CA') : '');
 
-function EpisodeRow({ ep, onToggle, onDate, busy }: { ep: Episode; onToggle: () => void; onDate: (iso: string | null) => void; busy: boolean }) {
-  const watched = ep.state === 'watched';
+function EpisodeRow({ ep, shownWatched, onToggle, onDate, busy }: { ep: Episode; shownWatched: boolean; onToggle: () => void; onDate: (iso: string | null) => void; busy: boolean }) {
+  const watched = shownWatched;
   return (
     <li className={`ep ${watched ? 'ep-watched' : ''} ${ep.orphaned ? 'ep-orphan' : ''}`}>
       <input type="checkbox" aria-label={`Mark ${epCode(ep)} watched`} checked={watched} onChange={onToggle} disabled={busy} />
@@ -43,6 +43,25 @@ export function ShowPage() {
   const { data: show, error } = useQuery({ queryKey: ['show', id], queryFn: () => api<ShowDetail>(`/shows/${id}`) });
   const [openSeasons, setOpenSeasons] = useState<Set<number> | null>(null);
   const [actionError, setActionError] = useState('');
+  // Ticks show immediately and lock only their own row, so several can be ticked quickly.
+  const [pending, setPending] = useState<Map<number, boolean>>(new Map());
+
+  const toggleEpisode = async (e: Episode, watched: boolean) => {
+    setActionError('');
+    setPending((m) => new Map(m).set(e.id, watched));
+    try {
+      await post(`/episodes/${e.id}/watched`, { watched });
+      await qc.invalidateQueries();
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setPending((m) => {
+        const next = new Map(m);
+        next.delete(e.id);
+        return next;
+      });
+    }
+  };
 
   const act = useMutation({
     mutationFn: (fn: () => Promise<unknown>) => fn(),
@@ -144,11 +163,14 @@ export function ShowPage() {
             </div>
             {isOpen && (
               <ul className="eps">
-                {eps.map((e) => (
-                  <EpisodeRow key={e.id} ep={e} busy={act.isPending}
-                    onToggle={() => act.mutate(() => post(`/episodes/${e.id}/watched`, { watched: e.state !== 'watched' }))}
-                    onDate={(at) => act.mutate(() => post(`/episodes/${e.id}/watch-date`, { at }))} />
-                ))}
+                {eps.map((e) => {
+                  const shownWatched = pending.get(e.id) ?? e.state === 'watched';
+                  return (
+                    <EpisodeRow key={e.id} ep={e} shownWatched={shownWatched} busy={act.isPending || pending.has(e.id)}
+                      onToggle={() => void toggleEpisode(e, !shownWatched)}
+                      onDate={(at) => act.mutate(() => post(`/episodes/${e.id}/watch-date`, { at }))} />
+                  );
+                })}
               </ul>
             )}
           </section>
