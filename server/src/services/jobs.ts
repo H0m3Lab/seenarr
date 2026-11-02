@@ -38,8 +38,10 @@ export function runJob(source: Source): Promise<void> {
 export const DEFAULT_MINUTES: Record<Source, number> = { sonarr: 60, metadata: 360 };
 export const minutesFor = (s: Source) => Number(getSetting(`sync_minutes_${s}`, String(DEFAULT_MINUTES[s]))) || DEFAULT_MINUTES[s];
 
-const lastStart = (s: Source) =>
-  db.prepare('SELECT started_at FROM sync_runs WHERE source = ? ORDER BY id DESC LIMIT 1').pluck().get(s) as string | undefined;
+const RETRY_AFTER_ERROR_MINUTES = 15;
+
+const lastRun = (s: Source) =>
+  db.prepare('SELECT started_at, status FROM sync_runs WHERE source = ? ORDER BY id DESC LIMIT 1').get(s) as { started_at: string; status: string } | undefined;
 
 /** Checks once a minute rather than holding timers, so a changed frequency applies straight away. */
 export function startScheduler() {
@@ -49,8 +51,10 @@ export function startScheduler() {
   const tick = () => {
     for (const s of ['sonarr', 'metadata'] as Source[]) {
       if (s === 'sonarr' && (!config.sonarrUrl || !config.sonarrKey)) continue;
-      const last = lastStart(s);
-      if (!last || Date.now() - Date.parse(last) >= minutesFor(s) * 60000) void runJob(s);
+      const last = lastRun(s);
+      // A failed run retries sooner than the normal interval, so an outage clears by itself.
+      const wait = last?.status === 'error' ? Math.min(minutesFor(s), RETRY_AFTER_ERROR_MINUTES) : minutesFor(s);
+      if (!last || Date.now() - Date.parse(last.started_at) >= wait * 60000) void runJob(s);
     }
   };
   setTimeout(tick, 5000);
