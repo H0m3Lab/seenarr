@@ -5,11 +5,8 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import { ZodError } from 'zod';
 import { config } from './config.js';
-import { migrate } from './db.js';
 import { registerRoutes } from './routes.js';
 import { startScheduler } from './services/jobs.js';
-
-migrate();
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' }, trustProxy: true, bodyLimit: 1024 * 1024 });
 

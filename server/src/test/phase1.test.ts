@@ -82,10 +82,9 @@ before(async () => {
   process.env.TVMAZE_URL = base;
   process.env.TVMAZE_GAP_MS = '0';
   process.env.HTTP_RETRIES = '0';
-  const dbm = await import('../db.js');
-  dbm.migrate();
-  db = dbm.db;
+  // Services first, as in the real app: importing them must not depend on setup done elsewhere.
   const tv = await import('../services/tvmaze.js');
+  db = (await import('../db.js')).db;
   const so = await import('../services/sonarr.js');
   const ev = await import('../services/events.js');
   const pr = await import('../services/progress.js');

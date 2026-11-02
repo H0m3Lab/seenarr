@@ -21,7 +21,7 @@ export function toUtc(value?: string | null): string | null {
   return Number.isNaN(ms) ? null : new Date(ms).toISOString();
 }
 
-export function migrate() {
+function migrate() {
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)');
   const dir = fileURLToPath(new URL('../migrations', import.meta.url));
   const done = new Set(db.prepare('SELECT name FROM schema_migrations').pluck().all() as string[]);
@@ -33,6 +33,9 @@ export function migrate() {
     })();
   }
 }
+
+// Runs on import: other modules prepare statements as they load, so the tables must exist first.
+migrate();
 
 export function getSetting(key: string, fallback: string): string {
   const v = db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(key) as string | undefined;
