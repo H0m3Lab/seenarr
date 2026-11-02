@@ -131,6 +131,7 @@ function UnmatchedGroup({ showId, title, rows }: { showId: number | null; title:
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [target, setTarget] = useState('');
+  const [filter, setFilter] = useState('');
   const show = useQuery({ queryKey: ['show', showId], queryFn: () => api<ShowDetail>(`/shows/${showId}`), enabled: open && showId !== null });
   const allShows = useQuery({ queryKey: ['shows'], queryFn: () => api<ShowSummary[]>('/shows'), enabled: open });
   const bulk = useMutation({
@@ -140,6 +141,11 @@ function UnmatchedGroup({ showId, title, rows }: { showId: number | null; title:
       void qc.invalidateQueries();
     },
   });
+  // One Plex show can hold files from two real shows, so "Select all" covers only what's listed.
+  const term = filter.trim().toLowerCase();
+  const visible = term
+    ? rows.filter((r) => fileName((JSON.parse(r.payload) as { item: Parameters<typeof fileName>[0] }).item).toLowerCase().includes(term))
+    : rows;
   const targetTitle = allShows.data?.find((s) => s.id === Number(target))?.title ?? '';
   const sendToShow = () => {
     if (confirm(`Record ${selected.size} selected watch${selected.size === 1 ? '' : 'es'} on ${targetTitle}, by the same season and episode number, keeping their dates?`)) bulk.mutate();
@@ -155,7 +161,9 @@ function UnmatchedGroup({ showId, title, rows }: { showId: number | null; title:
       {open && (
         <div className="eps">
           <div className="bulk">
-            <button onClick={() => setSelected(new Set(rows.map((r) => r.id)))}>Select all {rows.length}</button>
+            <input type="search" aria-label="Filter by file name" placeholder="Filter by file name" value={filter}
+              onChange={(e) => { setFilter(e.target.value); setSelected(new Set()); }} />
+            <button onClick={() => setSelected(new Set(visible.map((r) => r.id)))}>Select all {visible.length}</button>
             <button disabled={!selected.size} onClick={() => setSelected(new Set())}>Clear</button>
             <span className="muted">{selected.size} selected</span>
             <select aria-label="Show to send selected watches to" value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -168,7 +176,7 @@ function UnmatchedGroup({ showId, title, rows }: { showId: number | null; title:
           {bulk.data && <p className="okay">Recorded {bulk.data.assigned}. {bulk.data.skipped > 0 ? `${bulk.data.skipped} had no matching episode there and stayed here.` : ''}</p>}
           {bulk.error && <p className="error">{(bulk.error as Error).message}</p>}
           <ul className="plain">
-            {rows.map((r) => (
+            {visible.map((r) => (
               <UnmatchedRow key={r.id} row={r} episodes={show.data?.episodes} selected={selected.has(r.id)}
                 onSelect={(on) => {
                   const next = new Set(selected);
