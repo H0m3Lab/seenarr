@@ -8,6 +8,7 @@ import { config } from './config.js';
 import { db, getSetting, nowIso, setSetting } from './db.js';
 import { deleteShow } from './services/delete.js';
 import { applyPrime, linkPrimeShow, listImportFiles, previewPrime } from './services/prime.js';
+import { applyTrakt, listTraktExports, previewTrakt } from './services/trakt.js';
 import { correctWatchDate, setWatched, type WatchDate } from './services/events.js';
 import { addShowIds, closeReview, getShowIds } from './services/identity.js';
 import { isBusy, minutesFor, runJob } from './services/jobs.js';
@@ -129,6 +130,25 @@ export function registerRoutes(app: FastifyInstance) {
       throw fail(400, (err as Error).message);
     }
   });
+  const traktFolder = z.object({ folder: z.string().regex(/^trakt[\w.-]*$/) });
+  app.get('/api/v1/imports/trakt', async () => listTraktExports());
+  app.post('/api/v1/imports/trakt/preview', async (req) => {
+    const { folder } = traktFolder.parse(req.body);
+    try {
+      return previewTrakt(folder);
+    } catch (err) {
+      throw fail(400, (err as Error).message);
+    }
+  });
+  app.post('/api/v1/imports/trakt/apply', async (req) => {
+    const { folder } = traktFolder.parse(req.body);
+    try {
+      return await applyTrakt(folder);
+    } catch (err) {
+      throw fail(400, (err as Error).message);
+    }
+  });
+
   // Point an Amazon show name at a show here: an existing one, or one added from TVmaze now.
   app.post('/api/v1/imports/prime/link', async (req) => {
     const b = z.object({ primeShow: z.string().min(1).max(300), showId: z.number().int().positive().optional(), tvmazeId: z.number().int().positive().optional() })

@@ -19,6 +19,70 @@ interface Preview {
 }
 interface Applied { added: number; alreadyImported: number; unplaced: number; missingShows: number; backup: string }
 
+interface TraktPreview {
+  folder: string; plays: number; episodePlays: number; movies: number; toAdd: number; datedUnknown: number; newlyWatched: number; alreadyImported: number;
+  shows: { showId: number; show: string; toAdd: number; newlyWatched: number; alreadyImported: number }[];
+  missing: { title: string; year: number | null; plays: number }[];
+  deleted: { show: string; plays: number }[];
+  unplaced: { show: string; episode: string; watchedAt: string; reason: string }[];
+}
+interface TraktApplied extends TraktPreview { added: number; showsAdded: string[]; showsNotFound: string[]; backup: string }
+
+function TraktImport() {
+  const qc = useQueryClient();
+  const exports = useQuery({ queryKey: ['imports', 'trakt'], queryFn: () => api<{ folder: string; files: number }[]>('/imports/trakt') });
+  const folder = exports.data?.[0]?.folder ?? '';
+  const [preview, setPreview] = useState<TraktPreview | null>(null);
+  const [applied, setApplied] = useState<TraktApplied | null>(null);
+  const [error, setError] = useState('');
+  const run = useMutation({
+    mutationFn: () => post<TraktPreview>('/imports/trakt/preview', { folder }),
+    onMutate: () => setError(''),
+    onSuccess: setPreview,
+    onError: (e) => setError((e as Error).message),
+  });
+  const apply = useMutation({
+    mutationFn: () => post<TraktApplied>('/imports/trakt/apply', { folder }),
+    onMutate: () => setError(''),
+    onSuccess: (r) => { setApplied(r); setPreview(r); void qc.invalidateQueries(); },
+    onError: (e) => setError((e as Error).message),
+  });
+  const busy = run.isPending || apply.isPending;
+  if (!exports.data?.length) return null;
+  return (
+    <section>
+      <h2>Trakt export</h2>
+      <p className="muted">Folder <code>{folder}</code>. Matched by TVDB/IMDb IDs. Shows Trakt has that aren't here are added from TVmaze when you import.</p>
+      <div className="toolbar">
+        <button className="primary" disabled={busy} onClick={() => run.mutate()}>{run.isPending ? 'Checking…' : 'Preview'}</button>
+        {preview && <button className="primary" disabled={busy || (!preview.toAdd && !preview.missing.length)}
+          onClick={() => confirm(`Import ${preview.toAdd} Trakt plays and add ${preview.missing.length} shows?\n\nA copy of the database is saved first.`) && apply.mutate()}>
+          {apply.isPending ? 'Importing…' : 'Import'}</button>}
+      </div>
+      {error && <p className="error">{error}</p>}
+      {applied && <p className="ok-note">Imported {applied.added} plays; added {applied.showsAdded.length} shows. Database copy saved as <code>{applied.backup}</code>.{applied.showsNotFound.length ? ` Not found on TVmaze: ${applied.showsNotFound.join(', ')}.` : ''}</p>}
+      {preview && (
+        <>
+          <dl className="facts">
+            <div><dt>In the export</dt><dd>{preview.episodePlays} episode plays · {preview.movies} movies (skipped)</dd></div>
+            <div><dt>Ready to add</dt><dd>{preview.toAdd} plays ({preview.newlyWatched} episodes become watched; {preview.datedUnknown} were bulk "mark as watched" clicks, so their date is left unknown)</dd></div>
+            <div><dt>Already imported</dt><dd>{preview.alreadyImported}</dd></div>
+            <div><dt>Shows to add</dt><dd>{preview.missing.length ? preview.missing.map((m) => `${m.title}${m.year ? ` (${m.year})` : ''} · ${m.plays}`).join('; ') : 'none'}</dd></div>
+            {preview.deleted.length > 0 && <div><dt>Deleted here, skipped</dt><dd>{preview.deleted.map((d) => `${d.show} · ${d.plays}`).join('; ')}</dd></div>}
+            <div><dt>Not placed</dt><dd>{preview.unplaced.length}</dd></div>
+          </dl>
+          {preview.unplaced.length > 0 && (
+            <table className="list">
+              <thead><tr><th>Show</th><th>Episode</th><th>Watched</th><th>Why</th></tr></thead>
+              <tbody>{preview.unplaced.slice(0, 200).map((u, i) => <tr key={i}><td>{u.show}</td><td>{u.episode}</td><td>{u.watchedAt.slice(0, 10)}</td><td className="muted">{u.reason}</td></tr>)}</tbody>
+            </table>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function ImportPage() {
   const qc = useQueryClient();
   const files = useQuery({ queryKey: ['imports'], queryFn: () => api<ImportFile[]>('/imports') });
@@ -63,6 +127,8 @@ export function ImportPage() {
   return (
     <>
       <h1>Import watch history</h1>
+      <TraktImport />
+      <h2>Prime Video</h2>
       <p className="muted">Prime Video history files saved on the server. Preview first: nothing is added until you click Import.</p>
       <div className="toolbar">
         <select value={chosen} onChange={(e) => { setFile(e.target.value); setPreview(null); setApplied(null); }} disabled={busy}>
