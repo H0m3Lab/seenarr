@@ -6,6 +6,8 @@ import { Poster, ProgressBar } from '../components';
 
 const ended = (s: ShowSummary) => s.status === 'Ended' || s.status === 'Canceled';
 const following = (s: ShowSummary) => s.tracking_state === 'following';
+/** Every aired regular episode watched. A show with nothing aired yet doesn't count as done. */
+const fullyWatched = (s: ShowSummary) => s.progress.aired > 0 && s.progress.watched >= s.progress.aired;
 
 const FILTERS: Record<string, { label: string; test: (s: ShowSummary) => boolean }> = {
   following: { label: 'Following', test: following },
@@ -30,6 +32,13 @@ export function MyShows() {
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
   const filter = FILTERS[params.get('filter') ?? ''] ? params.get('filter')! : 'following';
+  // Remembered on this device, so it stays on across visits and filters.
+  const [hideDone, setHideDone] = useState(() => localStorage.getItem('hideFullyWatched') === '1');
+  const toggleHideDone = (on: boolean) => {
+    setHideDone(on);
+    localStorage.setItem('hideFullyWatched', on ? '1' : '0');
+    setSelected(new Set());
+  };
   const [q, setQ] = useState('');
   const [sort, setSort] = useState('title');
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -39,9 +48,10 @@ export function MyShows() {
     const term = q.trim().toLowerCase();
     return (data ?? [])
       .filter(FILTERS[filter].test)
+      .filter((s) => !hideDone || !fullyWatched(s))
       .filter((s) => !term || s.title.toLowerCase().includes(term))
       .sort(SORTS[sort].cmp);
-  }, [data, filter, q, sort]);
+  }, [data, filter, q, sort, hideDone]);
 
   const setTracking = useMutation({
     mutationFn: (state: Tracking) => post('/shows/tracking', { ids: [...selected], state }),
@@ -99,11 +109,14 @@ export function MyShows() {
             {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         </label>
+        <label>
+          <input type="checkbox" checked={hideDone} onChange={(e) => toggleHideDone(e.target.checked)} /> Hide fully watched
+        </label>
       </div>
       <div className="chips">
         {Object.entries(FILTERS).map(([k, v]) => (
           <button key={k} className={k === filter ? 'chip on' : 'chip'} onClick={() => pickFilter(k)}>
-            {v.label} <span className="count">{(data ?? []).filter(v.test).length}</span>
+            {v.label} <span className="count">{(data ?? []).filter(v.test).filter((s) => !hideDone || !fullyWatched(s)).length}</span>
           </button>
         ))}
       </div>
