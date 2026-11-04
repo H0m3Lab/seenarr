@@ -11,7 +11,7 @@ import { addShowIds, closeReview, getShowIds } from './services/identity.js';
 import { isBusy, minutesFor, runJob } from './services/jobs.js';
 import { linkSonarr } from './services/link.js';
 import { assignUnmatched, bulkAssign, handleWebhook, parseWebhook, testPlex } from './services/plex.js';
-import { allSummaries, dashboard, episodesForShow, isAired, summarise, type ShowRow } from './services/progress.js';
+import { allSummaries, dashboard, episodesForShow, isAired, markShowsWatched, summarise, type ShowRow } from './services/progress.js';
 import { testSonarr } from './services/sonarr.js';
 import { addShow, refreshShow, searchShows, testTvmaze } from './services/tvmaze.js';
 
@@ -168,6 +168,13 @@ export function registerRoutes(app: FastifyInstance) {
       .filter((e) => e.season === season && e.kind === 'regular' && !e.orphaned && (!b.watched || isAired(e, now)))
       .map((e) => e.id);
     return { changed: setWatched(ids, b.watched, (b.date ?? { mode: 'unknown' }) as WatchDate) };
+  });
+
+  // Whole shows (one or many): every aired regular episode, never specials or unaired ones.
+  // Already-watched episodes are skipped, so their real dates stay as they are.
+  app.post('/api/v1/shows/watched', async (req) => {
+    const b = z.object({ ids: z.array(z.number().int()).min(1).max(5000), date: dateInput.optional() }).parse(req.body);
+    return { changed: markShowsWatched(b.ids, (b.date ?? { mode: 'unknown' }) as WatchDate) };
   });
 
   app.get('/api/v1/posters/:file', async (req, reply) => {

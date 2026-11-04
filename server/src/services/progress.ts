@@ -1,4 +1,5 @@
 import { db } from '../db.js';
+import { setWatched, type WatchDate } from './events.js';
 
 export interface EpisodeRow {
   id: number;
@@ -112,6 +113,19 @@ const EPISODE_COLUMNS = `
 export function episodesForShow(showId: number): EpisodeRow[] {
   return db.prepare(`SELECT ${EPISODE_COLUMNS} FROM episodes e LEFT JOIN episode_state st ON st.episode_id = e.id
     WHERE e.show_id = ? ORDER BY e.season, e.number, e.air_date, e.id`).all(showId) as EpisodeRow[];
+}
+
+/**
+ * Whole shows: every aired regular episode, never specials, unaired or orphaned ones.
+ * Already-watched episodes are skipped by setWatched, so their real dates stay.
+ */
+export function markShowsWatched(showIds: number[], date: WatchDate = { mode: 'unknown' }, now = new Date()): number {
+  const ids = showIds.flatMap((showId) =>
+    episodesForShow(showId)
+      .filter((e) => e.kind === 'regular' && !e.orphaned && isAired(e, now))
+      .map((e) => e.id),
+  );
+  return setWatched(ids, true, date);
 }
 
 export interface ShowRow {

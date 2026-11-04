@@ -107,6 +107,13 @@ export function ShowPage() {
 
   const setTracking = (state: Tracking) => act.mutate(() => post('/shows/tracking', { ids: [id], state }));
 
+  const markAllWatched = () => {
+    const left = p.aired - p.watched;
+    if (!confirm(`Mark all ${left} unwatched aired episode${left === 1 ? '' : 's'} of ${show.title} watched?\n\nEpisodes you've already watched keep their dates.`)) return;
+    const today = confirm('Did you watch them today?\n\nOK = date them today. Cancel = leave the date unknown.');
+    act.mutate(() => post('/shows/watched', { ids: [id], date: { mode: today ? 'now' : 'unknown' } }));
+  };
+
   return (
     <>
       <div className="show-head">
@@ -136,6 +143,7 @@ export function ShowPage() {
                 {t[0].toUpperCase() + t.slice(1)}
               </button>
             ))}
+            <button disabled={act.isPending || !p.aired || p.watched >= p.aired} onClick={markAllWatched}>Mark all watched</button>
             <button disabled={act.isPending} onClick={() => act.mutate(() => post(`/shows/${id}/refresh`))}>Refresh metadata</button>
           </div>
           {actionError && <p className="error">{actionError}</p>}

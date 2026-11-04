@@ -65,6 +65,7 @@ let svc: {
   episodesForShow: typeof import('../services/progress.js').episodesForShow;
   computeProgress: typeof import('../services/progress.js').computeProgress;
   dashboard: typeof import('../services/progress.js').dashboard;
+  markShowsWatched: typeof import('../services/progress.js').markShowsWatched;
 };
 
 const showIdOf = (tvmaze: number) =>
@@ -88,7 +89,7 @@ before(async () => {
   const so = await import('../services/sonarr.js');
   const ev = await import('../services/events.js');
   const pr = await import('../services/progress.js');
-  svc = { addShow: tv.addShow, refreshShow: tv.refreshShow, syncMetadata: tv.syncMetadata, syncSonarr: so.syncSonarr, setWatched: ev.setWatched, correctWatchDate: ev.correctWatchDate, episodesForShow: pr.episodesForShow, computeProgress: pr.computeProgress, dashboard: pr.dashboard };
+  svc = { addShow: tv.addShow, refreshShow: tv.refreshShow, syncMetadata: tv.syncMetadata, syncSonarr: so.syncSonarr, setWatched: ev.setWatched, correctWatchDate: ev.correctWatchDate, episodesForShow: pr.episodesForShow, computeProgress: pr.computeProgress, dashboard: pr.dashboard, markShowsWatched: pr.markShowsWatched };
 });
 
 after(() => {
@@ -224,6 +225,29 @@ test('a backdated manual watch still beats an earlier unwatch; correcting a date
   assert.equal(epOf(id, 2, 6).occurred_at_utc, at);
   const live = count(`SELECT COUNT(*) FROM watch_events WHERE episode_id = ? AND kind = 'watched' AND duplicate_of IS NULL`, ep.id);
   assert.equal(live, 2, 'first watch plus the corrected one; the backdated original is folded in');
+});
+
+test('mark all watched covers aired regular episodes only and keeps existing watch dates', async () => {
+  makeShow(310, 9310);
+  fake.episodes[310] = [
+    tvEp(3101, 1, 1, -90), tvEp(3102, 1, 2, -80), tvEp(3103, 2, 1, -20),
+    tvEp(3104, 2, null, -15, 'significant_special'),
+    tvEp(3105, 2, 2, 7),
+  ];
+  const { showId } = await svc.addShow(310);
+  const dated = iso(-85);
+  svc.setWatched([epOf(showId, 1, 1).id], true, { mode: 'date', at: dated });
+
+  assert.equal(svc.markShowsWatched([showId]), 2, 'S01E02 and S02E01 only');
+  const eps = svc.episodesForShow(showId);
+  assert.equal(epOf(showId, 1, 1).occurred_at_utc, dated, 'an earlier watch keeps its date');
+  assert.equal(epOf(showId, 1, 2).date_quality, 'unknown', 'default date is unknown');
+  assert.equal(eps.find((e) => e.kind !== 'regular')?.state ?? 'unwatched', 'unwatched', 'special untouched');
+  assert.equal(epOf(showId, 2, 2).state ?? 'unwatched', 'unwatched', 'unaired untouched');
+  const p = svc.computeProgress(eps);
+  assert.equal(p.watched, p.aired);
+  assert.ok(!p.nextToWatch, 'caught up');
+  assert.equal(svc.markShowsWatched([showId]), 0, 'running it again adds nothing');
 });
 
 test('marking twice adds one event only', () => {

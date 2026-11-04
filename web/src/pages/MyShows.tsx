@@ -51,6 +51,30 @@ export function MyShows() {
     },
   });
 
+  const [markResult, setMarkResult] = useState('');
+  const markWatched = useMutation({
+    mutationFn: (date: { mode: 'now' | 'unknown' }) => post<{ changed: number }>('/shows/watched', { ids: [...selected], date }),
+    onMutate: () => setMarkResult(''),
+    onSuccess: (r) => {
+      setMarkResult(`Marked ${r.changed} episode${r.changed === 1 ? '' : 's'} watched.`);
+      setSelected(new Set());
+      void qc.invalidateQueries();
+    },
+    onError: (err) => setMarkResult((err as Error).message),
+  });
+
+  const markAllWatched = () => {
+    const picked = (data ?? []).filter((s) => selected.has(s.id));
+    const left = picked.reduce((n, s) => n + Math.max(0, s.progress.aired - s.progress.watched), 0);
+    if (!left) {
+      setMarkResult('Those shows are already caught up.');
+      return;
+    }
+    if (!confirm(`Mark ${left} unwatched aired episode${left === 1 ? '' : 's'} across ${picked.length} show${picked.length === 1 ? '' : 's'} watched?\n\nEpisodes you've already watched keep their dates.`)) return;
+    const today = confirm('Did you watch them today?\n\nOK = date them today. Cancel = leave the date unknown.');
+    markWatched.mutate({ mode: today ? 'now' : 'unknown' });
+  };
+
   const toggle = (id: number) => {
     const next = new Set(selected);
     if (next.has(id)) next.delete(id);
@@ -91,7 +115,9 @@ export function MyShows() {
         <button className="primary" disabled={!selected.size || setTracking.isPending} onClick={() => setTracking.mutate('following')}>Follow</button>
         <button disabled={!selected.size || setTracking.isPending} onClick={() => setTracking.mutate('archived')}>Archive</button>
         <button disabled={!selected.size || setTracking.isPending} onClick={() => setTracking.mutate('discovered')}>Back to Discovered</button>
+        <button disabled={!selected.size || markWatched.isPending} onClick={markAllWatched}>Mark all watched</button>
       </div>
+      {markResult && <p className="muted">{markResult}</p>}
 
       {data && !shows.length && <p className="muted">No shows here.</p>}
       <div className="grid">
