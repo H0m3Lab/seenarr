@@ -24,10 +24,12 @@ const SAME_WATCH_WINDOW_MS = 6 * 3600000;
 
 export interface ExternalWatch {
   episodeId: number;
-  source: 'plex' | 'trakt';
+  source: 'plex' | 'trakt' | 'prime' | 'netflix';
   key: string; // stable per watch, so repeat imports add nothing
   occurredAt: string | null;
   raw: unknown;
+  /** History files often give only the day; default is 'exact' when a time is given. */
+  dateQuality?: 'exact' | 'date_only';
 }
 
 /**
@@ -39,7 +41,7 @@ export function addExternalWatch(w: ExternalWatch): boolean {
   const info = db.prepare(`INSERT OR IGNORE INTO watch_events
       (episode_id, kind, source, occurred_at_utc, date_quality, precedence_at, source_event_key, raw_ref, recorded_at)
       VALUES (?, 'watched', ?, ?, ?, ?, ?, ?, ?)`)
-    .run(w.episodeId, w.source, w.occurredAt, w.occurredAt ? 'exact' : 'unknown', w.occurredAt ?? '', w.key, JSON.stringify(w.raw), nowIso());
+    .run(w.episodeId, w.source, w.occurredAt, w.occurredAt ? (w.dateQuality ?? 'exact') : 'unknown', w.occurredAt ?? '', w.key, JSON.stringify(w.raw), nowIso());
   if (!info.changes) return false;
   if (w.occurredAt) {
     const t = Date.parse(w.occurredAt);

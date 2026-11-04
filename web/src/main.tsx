@@ -10,6 +10,7 @@ import { ShowPage } from './pages/Show';
 import { AddShow } from './pages/AddShow';
 import { Settings } from './pages/Settings';
 import { ReviewPage } from './pages/Review';
+import { ImportPage } from './pages/Import';
 import './styles.css';
 
 const client = new QueryClient({
@@ -36,6 +37,7 @@ function App() {
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/shows">My Shows</NavLink>
           <NavLink to="/add">Add Show</NavLink>
+          <NavLink to="/import">Import</NavLink>
           <NavLink to="/settings">Settings</NavLink>
           <button className="link" onClick={logout}>Sign out</button>
         </nav>
@@ -48,6 +50,7 @@ function App() {
           <Route path="/add" element={<AddShow />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/review" element={<ReviewPage />} />
+          <Route path="/import" element={<ImportPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

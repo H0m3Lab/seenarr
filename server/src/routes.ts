@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { db, getSetting, nowIso, setSetting } from './db.js';
 import { deleteShow } from './services/delete.js';
+import { applyPrime, linkPrimeShow, listImportFiles, previewPrime } from './services/prime.js';
 import { correctWatchDate, setWatched, type WatchDate } from './services/events.js';
 import { addShowIds, closeReview, getShowIds } from './services/identity.js';
 import { isBusy, minutesFor, runJob } from './services/jobs.js';
@@ -107,6 +108,45 @@ export function registerRoutes(app: FastifyInstance) {
       externalIds: getShowIds(id),
       episodes: eps.map((e) => ({ ...e, aired: isAired(e, now) })),
     };
+  });
+
+  // Imports from history files saved in DATA_DIR/imports. Run only from the Import page.
+  const importFile = z.object({ file: z.string().regex(/^[\w.-]+\.json$/) });
+  app.get('/api/v1/imports', async () => listImportFiles());
+  app.post('/api/v1/imports/prime/preview', async (req) => {
+    const { file } = importFile.parse(req.body);
+    try {
+      return await previewPrime(file);
+    } catch (err) {
+      throw fail(400, (err as Error).message);
+    }
+  });
+  app.post('/api/v1/imports/prime/apply', async (req) => {
+    const { file } = importFile.parse(req.body);
+    try {
+      return await applyPrime(file);
+    } catch (err) {
+      throw fail(400, (err as Error).message);
+    }
+  });
+  // Point an Amazon show name at a show here: an existing one, or one added from TVmaze now.
+  app.post('/api/v1/imports/prime/link', async (req) => {
+    const b = z.object({ primeShow: z.string().min(1).max(300), showId: z.number().int().positive().optional(), tvmazeId: z.number().int().positive().optional() })
+      .refine((v) => !!v.showId !== !!v.tvmazeId, 'Give a show or a TVmaze ID').parse(req.body);
+    let showId = b.showId;
+    if (b.tvmazeId) {
+      try {
+        showId = (await addShow(b.tvmazeId)).showId;
+      } catch (err) {
+        throw fail(502, (err as Error).message);
+      }
+    }
+    try {
+      linkPrimeShow(b.primeShow, showId!);
+    } catch (err) {
+      throw fail(404, (err as Error).message);
+    }
+    return { showId };
   });
 
   // The only way a show is ever deleted: your click in the web app, confirmed. No sync or job calls this.
