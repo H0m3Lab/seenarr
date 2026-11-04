@@ -42,7 +42,9 @@ button { background: var(--panel-2); border: 1px solid var(--line); border-radiu
 button:hover:not(:disabled) { border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #1b1407; }
-button.link { background: none; border: 0; color: var(--muted); padding: 4px 0; }
+button.danger { color: var(--bad); border-color: var(--bad); margin-left: auto; }
+button.danger:hover:not(:disabled) { background: var(--bad); color: #1b1407; border-color: var(--bad); }
+button.link {background: none; border: 0; color: var(--muted); padding: 4px 0; }
 input[type=search], input[type=password], input[type=number], input[type=date], select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; }
 input[type=search] { flex: 1; min-width: 180px; }
 input[type=number] { width: 84px; margin: 0 6px; }

@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { config } from './config.js';
 import { db, getSetting, nowIso, setSetting } from './db.js';
+import { deleteShow } from './services/delete.js';
 import { correctWatchDate, setWatched, type WatchDate } from './services/events.js';
 import { addShowIds, closeReview, getShowIds } from './services/identity.js';
 import { isBusy, minutesFor, runJob } from './services/jobs.js';
@@ -106,6 +107,15 @@ export function registerRoutes(app: FastifyInstance) {
       externalIds: getShowIds(id),
       episodes: eps.map((e) => ({ ...e, aired: isAired(e, now) })),
     };
+  });
+
+  // The only way a show is ever deleted: your click in the web app, confirmed. No sync or job calls this.
+  app.delete('/api/v1/shows/:id', async (req) => {
+    const id = z.coerce.number().int().parse((req.params as { id: string }).id);
+    z.object({ confirm: z.literal(true) }).parse(req.body);
+    const result = deleteShow(id);
+    if (!result) throw fail(404, 'No such show');
+    return result;
   });
 
   app.post('/api/v1/shows/tracking', async (req) => {

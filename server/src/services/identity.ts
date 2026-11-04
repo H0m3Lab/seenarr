@@ -23,6 +23,24 @@ export function findShowsByIds(ids: IdSet): number[] {
   return [...found];
 }
 
+export const DELETED_REASON = 'Show was deleted in TV Tracker';
+
+/** True if any of these IDs belongs to a show you deleted. Syncs must not re-create it. */
+export function isDeletedShow(ids: IdSet): boolean {
+  const q = db.prepare('SELECT 1 FROM deleted_show_ids WHERE provider = ? AND external_id = ?');
+  return cleanIds(ids).some(([p, v]) => q.get(p, v) !== undefined);
+}
+
+/** Adding a show again by hand lets it back in: every ID of that deleted show is forgotten. */
+export function forgetDeletedIds(ids: IdSet) {
+  const owner = db.prepare('SELECT deleted_show_id FROM deleted_show_ids WHERE provider = ? AND external_id = ?').pluck();
+  const del = db.prepare('DELETE FROM deleted_show_ids WHERE deleted_show_id = ?');
+  for (const [p, v] of cleanIds(ids)) {
+    const d = owner.get(p, v) as number | undefined;
+    if (d !== undefined) del.run(d);
+  }
+}
+
 export function getShowIds(showId: number): Partial<Record<Provider, string>> {
   const rows = db.prepare('SELECT provider, external_id FROM show_ids WHERE show_id = ?').all(showId) as { provider: Provider; external_id: string }[];
   return Object.fromEntries(rows.map((r) => [r.provider, r.external_id]));

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api, epCode, fmtAir, fmtDate, post, type Episode, type ShowDetail, type Tracking } from '../api';
 import { Badge, Poster, ProgressBar } from '../components';
 
@@ -40,6 +40,7 @@ function EpisodeRow({ ep, shownWatched, onToggle, onDate, busy }: { ep: Episode;
 export function ShowPage() {
   const id = Number(useParams().id);
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data: show, error } = useQuery({ queryKey: ['show', id], queryFn: () => api<ShowDetail>(`/shows/${id}`) });
   const [openSeasons, setOpenSeasons] = useState<Set<number> | null>(null);
   const [actionError, setActionError] = useState('');
@@ -107,6 +108,23 @@ export function ShowPage() {
 
   const setTracking = (state: Tracking) => act.mutate(() => post('/shows/tracking', { ids: [id], state }));
 
+  const deleteShow = () => {
+    const watched = show.episodes.filter((e) => e.state === 'watched').length;
+    const warning = watched
+      ? `Delete ${show.title}?\n\nThis removes the show and its watch history (${watched} watched episode${watched === 1 ? '' : 's'}) from TV Tracker. Sonarr and Plex syncs won't bring it back; adding it again through Add Show will.`
+      : `Delete ${show.title}?\n\nIt has no watch history. Sonarr and Plex syncs won't bring it back; adding it again through Add Show will.`;
+    if (!confirm(warning)) return;
+    if (watched && prompt(`Type the show's name to confirm:\n\n${show.title}`)?.trim().toLowerCase() !== show.title.toLowerCase()) {
+      setActionError("The name didn't match, so nothing was deleted.");
+      return;
+    }
+    act.mutate(async () => {
+      await api(`/shows/${id}`, { method: 'DELETE', body: { confirm: true } });
+      qc.removeQueries({ queryKey: ['show', id] });
+      navigate('/shows');
+    });
+  };
+
   const markAllWatched = () => {
     const left = p.aired - p.watched;
     if (!confirm(`Mark all ${left} unwatched aired episode${left === 1 ? '' : 's'} of ${show.title} watched?\n\nEpisodes you've already watched keep their dates.`)) return;
@@ -145,6 +163,7 @@ export function ShowPage() {
             ))}
             <button disabled={act.isPending || !p.aired || p.watched >= p.aired} onClick={markAllWatched}>Mark all watched</button>
             <button disabled={act.isPending} onClick={() => act.mutate(() => post(`/shows/${id}/refresh`))}>Refresh metadata</button>
+            <button className="danger" disabled={act.isPending} onClick={deleteShow}>Delete show</button>
           </div>
           {actionError && <p className="error">{actionError}</p>}
         </div>

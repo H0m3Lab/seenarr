@@ -315,6 +315,34 @@ test('unclear matches go to review rather than being assigned', async () => {
   assert.equal(state, 'needs_review');
 });
 
+test('deleting a show by hand keeps a snapshot, and Sonarr cannot bring it back; Add Show can', async () => {
+  makeShow(700, 9770);
+  fake.episodes[700] = [tvEp(7001, 1, 1, -30), tvEp(7002, 1, 2, -20)];
+  const { showId } = await svc.addShow(700);
+  svc.setWatched([epOf(showId, 1, 1).id], true);
+  const otherEvents = count(`SELECT COUNT(*) FROM watch_events WHERE episode_id NOT IN (SELECT id FROM episodes WHERE show_id = ?)`, showId);
+
+  const { deleteShow } = await import('../services/delete.js');
+  assert.deepEqual(deleteShow(showId), { title: 'ZZTEST Show 700', episodes: 2, watchEvents: 1 });
+  assert.equal(count('SELECT COUNT(*) FROM shows WHERE id = ?', showId), 0);
+  assert.equal(count('SELECT COUNT(*) FROM watch_events'), otherEvents, "other shows' history untouched");
+  const snap = JSON.parse(db.prepare('SELECT snapshot FROM deleted_shows ORDER BY id DESC LIMIT 1').pluck().get() as string);
+  assert.equal(snap.watchEvents.length, 1, 'the removed history is kept in the snapshot');
+  assert.equal(deleteShow(showId), null, 'deleting twice does nothing');
+
+  fake.series = [{ id: 70, title: 'ZZTEST Show 700', tvdbId: 9770, imdbId: 'tt700', monitored: true }];
+  fake.sonarrEpisodes[70] = [];
+  await svc.syncSonarr();
+  assert.equal(count(`SELECT COUNT(*) FROM shows WHERE title = 'ZZTEST Show 700'`), 0, 'Sonarr does not re-create it');
+
+  const again = await svc.addShow(700);
+  assert.equal(again.created, true, 'adding it by hand brings it back');
+  assert.equal(count(`SELECT COUNT(*) FROM deleted_show_ids WHERE deleted_show_id = (SELECT MAX(id) FROM deleted_shows)`), 0);
+  await svc.syncSonarr();
+  assert.equal(count(`SELECT COUNT(*) FROM shows WHERE title = 'ZZTEST Show 700'`), 1, 'and Sonarr links to it again, no duplicate');
+  fake.series = [];
+});
+
 test('history tables cannot be emptied through a show delete', () => {
   assert.throws(() => db.prepare('DELETE FROM shows').run(), /FOREIGN KEY/);
 });

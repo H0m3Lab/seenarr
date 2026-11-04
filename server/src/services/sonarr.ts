@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { db, nowIso, toUtc } from '../db.js';
 import { fetchRetry, HttpError } from '../http.js';
-import { addShowIds, closeReview, createShow, findShowsByIds, openReview, type IdSet } from './identity.js';
+import { addShowIds, closeReview, createShow, findShowsByIds, isDeletedShow, openReview, type IdSet } from './identity.js';
 import { linkSonarr } from './link.js';
 
 interface SonarrSeries {
@@ -78,6 +78,7 @@ export async function syncSonarr() {
       }
       let id = matches[0];
       if (id === undefined) {
+        if (isDeletedShow(ids)) return null; // you deleted it here; Sonarr can't bring it back
         id = createShow(s.title, 'discovered');
         added++;
       }

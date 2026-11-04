@@ -2,7 +2,7 @@ import { config } from '../config.js';
 import { db, nowIso } from '../db.js';
 import { fetchRetry, HttpError } from '../http.js';
 import { addExternalWatch } from './events.js';
-import { addShowIds, createShow, findShowsByIds, openReview, type IdSet } from './identity.js';
+import { addShowIds, createShow, DELETED_REASON, findShowsByIds, isDeletedShow, openReview, type IdSet } from './identity.js';
 import { daysApart, MAX_AIR_DATE_DRIFT_DAYS } from './link.js';
 import { refreshShow } from './tvmaze.js';
 
@@ -78,6 +78,7 @@ function findShow(s: PlexShow): ShowLookup {
     addShowIds(matches[0], showIdSet(s));
     return { showId: matches[0], reason: '' };
   }
+  if (isDeletedShow(showIdSet(s))) return { showId: null, reason: DELETED_REASON };
   return { showId: null, reason: Object.values(external).some(Boolean) ? 'Show not in the tracker' : 'Plex has no external IDs for this show' };
 }
 
@@ -149,6 +150,8 @@ const watchKey = (episodeId: number, viewedAt: number) => `${config.plexAccountI
 
 /** Record one play: as a watch if it can be placed, otherwise kept in the unmatched list. */
 function recordPlay(item: PlexEpisode, viewedAt: number, showId: number | null, reasonIfNoShow: string): 'added' | 'known' | 'unmatched' {
+  // Plays of a show you deleted are left alone, not queued for review.
+  if (showId === null && reasonIfNoShow === DELETED_REASON) return 'known';
   const match = matchEpisode(item, showId);
   const sourceKey = `${item.guid ?? item.ratingKey}:${viewedAt}`;
   const prior = db.prepare(`SELECT status, episode_id FROM unmatched_watches WHERE source = 'plex' AND source_key = ?`).get(sourceKey) as { status: string; episode_id: number | null } | undefined;

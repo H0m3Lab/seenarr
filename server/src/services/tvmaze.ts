@@ -3,7 +3,7 @@ import path from 'node:path';
 import { config } from '../config.js';
 import { db, nowIso, toUtc } from '../db.js';
 import { fetchRetry, HttpError } from '../http.js';
-import { addShowIds, closeReview, createShow, findShowsByIds, getShowIds, openReview, sortTitle } from './identity.js';
+import { addShowIds, closeReview, createShow, findShowsByIds, forgetDeletedIds, getShowIds, openReview, sortTitle } from './identity.js';
 import { linkSonarr } from './link.js';
 
 export interface TvmShow {
@@ -269,6 +269,7 @@ export async function addShow(tvmazeId: number): Promise<{ showId: number; creat
     return { showId: matches[0], created: false };
   }
   const showId = db.transaction(() => {
+    forgetDeletedIds(externalIds(tv)); // you're adding it by hand, so a past delete no longer applies
     const id = createShow(tv.name, 'following');
     addShowIds(id, externalIds(tv));
     return id;
