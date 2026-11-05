@@ -3,7 +3,7 @@ import { db, nowIso } from '../db.js';
 import { fetchRetry, HttpError } from '../http.js';
 import { addExternalWatch } from './events.js';
 import { addShowIds, createShow, DELETED_REASON, findShowsByIds, isDeletedShow, openReview, type IdSet } from './identity.js';
-import { daysApart, MAX_AIR_DATE_DRIFT_DAYS } from './link.js';
+import { daysApart, findByTitle, MAX_AIR_DATE_DRIFT_DAYS, sameTitle } from './link.js';
 import { refreshShow } from './tvmaze.js';
 
 interface PlexGuid { id: string }
@@ -21,6 +21,7 @@ export interface PlexEpisode {
   viewCount?: number;
   lastViewedAt?: number;
   Guid?: PlexGuid[];
+  Media?: { Part?: { file?: string }[] }[];
 }
 
 interface PlexShow {
@@ -94,11 +95,56 @@ async function addMissingShow(s: PlexShow): Promise<number | null> {
   return id;
 }
 
+const fileOf = (item: PlexEpisode) => item.Media?.[0]?.Part?.[0]?.file ?? '';
+const baseName = (file: string) => (file.split(/[\\/]/).pop() ?? '').replace(/\.[a-z0-9]{2,4}$/i, '');
+
+export const EXTRA_REASON = 'Bonus material, not an episode';
+
+/**
+ * Panels, featurettes and other bonus files that Plex lists as episodes: an "S04E00" file, or
+ * anything inside an Extras/Featurettes folder. Nothing to track, so they're set aside.
+ */
+export function isExtra(file: string): boolean {
+  if (!file) return false;
+  const parts = file.split(/[\\/]/);
+  if (/(?:^|[ ._-])s\d{1,2}e00(?:[ ._-]|$)/i.test(baseName(file))) return true;
+  return parts.slice(0, -1).some((p) => /(?:^|[ ._-])(?:extras|featurettes|bonus|behind[ ._-]the[ ._-]scenes)(?:[ ._-]|$)/i.test(p));
+}
+
+const RELEASE_TAG = /^(?:\d{3,4}p|4k|uhd|hdr|web|webrip|web-dl|webdl|hdtv|bluray|blu-ray|remux|amzn|nf|dsnp|hulu|atvp|hmax|max|pcok|repack|proper|internal|x264|x265|h264|h265|hevc|avc|10bit|ddp?\d.*|dd\+?\d.*|aac.*|eac3.*)$/i;
+
+/** The episode title in a release-style file name: "Show.S16E01.Mysteries.of.the.Pyramid.1080p..." */
+export function fileTitle(file: string): string | null {
+  const m = /s\d{1,3}e\d{1,3}(?:-?e\d{1,3})*[ ._-]+(.*)$/i.exec(baseName(file));
+  if (!m) return null;
+  const words: string[] = [];
+  for (const w of m[1].split(/[ ._]+/)) {
+    if (RELEASE_TAG.test(w.replace(/[()[\]{}]/g, ''))) break;
+    words.push(w);
+  }
+  const t = words.join(' ').trim();
+  return t || null;
+}
+
+/** Which of the show's episodes the file title, then Plex's own title, names. */
+function byTitle(showId: number, item: PlexEpisode, slot?: { id: number; title: string | null }): number | null {
+  const fromFile = fileTitle(fileOf(item));
+  const eps = db.prepare('SELECT id, title FROM episodes WHERE show_id = ? AND orphaned = 0').all(showId) as { id: number; title: string | null }[];
+  for (const t of [fromFile, item.title]) {
+    if (!t) continue;
+    if (slot && sameTitle(slot.title, t)) return slot.id;
+    const hit = findByTitle(eps, t);
+    if (hit) return hit.id;
+  }
+  return null;
+}
+
 /** Place a Plex episode on one of ours, or explain why it can't be placed. */
 function matchEpisode(item: PlexEpisode, showId: number | null): { episodeId: number | null; showId: number | null; reason: string } {
   // Checked first: a held show's episode IDs are exactly what can't be trusted.
   const held = holdReason(item.grandparentGuid);
   if (held) return { episodeId: null, showId: null, reason: `On hold: ${held}` };
+  if (isExtra(fileOf(item))) return { episodeId: null, showId, reason: EXTRA_REASON };
   const tvdb = guidOf(item, 'tvdb');
   if (tvdb) {
     const hit = db.prepare(`SELECT e.id, e.show_id FROM episode_ids i JOIN episodes e ON e.id = i.episode_id WHERE i.provider = 'tvdb' AND i.external_id = ?`).get(tvdb) as { id: number; show_id: number } | undefined;
@@ -116,10 +162,13 @@ function matchEpisode(item: PlexEpisode, showId: number | null): { episodeId: nu
   const number = item.index;
   if (season === undefined || number === undefined) return { episodeId: null, showId, reason: 'Plex has no season or episode number' };
 
-  const slot = db.prepare('SELECT id, air_date FROM episodes WHERE show_id = ? AND season = ? AND number = ? AND orphaned = 0').get(showId, season, number) as { id: number; air_date: string | null } | undefined;
+  const slot = db.prepare('SELECT id, title, air_date FROM episodes WHERE show_id = ? AND season = ? AND number = ? AND orphaned = 0').get(showId, season, number) as { id: number; title: string | null; air_date: string | null } | undefined;
   if (slot) {
     const aired = item.originallyAvailableAt;
     if (!show.trust_numbering && aired && slot.air_date && daysApart(aired, slot.air_date) > MAX_AIR_DATE_DRIFT_DAYS) {
+      // Dates disagree (often streaming vs TV air dates): the file's or Plex's title decides.
+      const named = byTitle(showId, item, slot);
+      if (named !== null) return { episodeId: named, showId, reason: '' };
       return { episodeId: null, showId, reason: `Aired ${aired} in Plex, ${slot.air_date} in TVmaze` };
     }
     if (tvdb) db.prepare(`INSERT OR IGNORE INTO episode_ids (episode_id, provider, external_id) VALUES (?, 'tvdb', ?)`).run(slot.id, tvdb);
@@ -130,6 +179,8 @@ function matchEpisode(item: PlexEpisode, showId: number | null): { episodeId: nu
     const candidates = db.prepare(`SELECT id FROM episodes WHERE show_id = ? AND kind = 'special' AND number IS NULL AND orphaned = 0 AND air_date = ?`).pluck().all(showId, item.originallyAvailableAt) as number[];
     if (candidates.length === 1) return { episodeId: candidates[0], showId, reason: '' };
   }
+  const named = byTitle(showId, item);
+  if (named !== null) return { episodeId: named, showId, reason: '' };
   return { episodeId: null, showId, reason: `No S${season}E${number} in this show's episode list` };
 }
 
@@ -156,6 +207,11 @@ function recordPlay(item: PlexEpisode, viewedAt: number, showId: number | null, 
   const sourceKey = `${item.guid ?? item.ratingKey}:${viewedAt}`;
   const prior = db.prepare(`SELECT status, episode_id FROM unmatched_watches WHERE source = 'plex' AND source_key = ?`).get(sourceKey) as { status: string; episode_id: number | null } | undefined;
   if (prior?.status === 'dismissed') return 'known';
+  // Bonus files are never queued; one queued before this rule existed is set aside.
+  if (match.reason === EXTRA_REASON && !prior?.episode_id) {
+    if (prior) db.prepare(`UPDATE unmatched_watches SET status = 'dismissed', reason = ?, updated_at = ? WHERE source = 'plex' AND source_key = ?`).run(EXTRA_REASON, nowIso(), sourceKey);
+    return 'known';
+  }
   // Your own assignment beats automatic matching.
   const episodeId = prior?.episode_id ?? match.episodeId;
   if (episodeId !== null) {

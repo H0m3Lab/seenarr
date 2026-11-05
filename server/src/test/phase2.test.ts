@@ -310,6 +310,49 @@ test('a held Plex show records nothing, even with valid episode IDs, until assig
   assert.equal(ep(target, 3).in_plex, 0);
 });
 
+test('bonus files are set aside; file and episode titles settle date and numbering disagreements', async () => {
+  tvShow(50, 5050);
+  fake.tvEpisodes[50] = [
+    { id: 5001, name: 'Mysteries of the Great Pyramid', season: 1, number: 1, type: 'regular', airdate: date(-30), airstamp: `${date(-30)}T01:00:00+00:00` },
+    { id: 5002, name: 'Legacy', season: 1, number: 2, type: 'regular', airdate: date(-29), airstamp: `${date(-29)}T01:00:00+00:00` },
+    { id: 5003, name: 'Twilight of the Apprentice', season: 1, number: 3, type: 'regular', airdate: date(-28), airstamp: `${date(-28)}T01:00:00+00:00` },
+    { id: 5004, name: 'Heroes: Part 1', season: 1, number: 4, type: 'regular', airdate: date(-27), airstamp: `${date(-27)}T01:00:00+00:00` },
+    { id: 5005, name: 'Heroes: Part 2', season: 1, number: 5, type: 'regular', airdate: date(-27), airstamp: `${date(-27)}T01:00:00+00:00` },
+  ];
+  await tvmaze.addShow(50);
+  const id = showOf(50);
+  const file = (f: string) => ({ Media: [{ Part: [{ file: f }] }] });
+  const old = { originallyAvailableAt: date(-400) };
+  fake.shows.push(plexShow('s5', 5050));
+  fake.episodes.push(
+    // Plex's own title is wrong and its date disagrees; the file says what was played.
+    plexEp('x1', 's5', 1, 1, nowS - 3 * day, { ...old, title: 'Something Else', ...file('D:\\TV\\Show\\Show.S01E01.Mysteries.of.the.Great.Pyramid.1080p.WEB.mkv') }),
+    // Numbered differently; only the title places it.
+    plexEp('x2', 's5', 1, 9, nowS - 3 * day, { title: 'Episode 9', ...file('D:\\TV\\Show\\Show.S01E09.Legacy.720p.HDTV.mkv') }),
+    // A two-parter TVmaze lists once.
+    plexEp('x3', 's5', 1, 8, nowS - 3 * day, { title: 'Episode 8', ...file('D:\\TV\\Show\\Show.S01E08.Twilight.of.the.Apprentice.Part.2.1080p.mkv') }),
+    // Two TVmaze episodes fit "Heroes": not a match.
+    plexEp('x4', 's5', 1, 7, nowS - 3 * day, { title: 'Heroes', ...file('D:\\TV\\Show\\Show.S01E07.1080p.mkv') }),
+    // Bonus material.
+    plexEp('x5', 's5', 1, 0, nowS - 3 * day, { title: 'Episode 0', ...file('D:\\TV\\Show\\Show.S01E00.Comic.Con.Panel.1080p.mkv') }),
+    plexEp('x6', 's5', 0, 6, nowS - 3 * day, { title: 'Legacy', ...file('D:\\TV\\Show\\Show.S01.Extras\\06 Inside Legacy.mkv') }),
+  );
+  await plex.syncPlex();
+  const e = (n: number) => ep(id, n).state;
+  assert.equal(e(1), 'watched', 'file title beats a wrong Plex title and date');
+  assert.equal(e(2), 'watched');
+  assert.equal(e(3), 'watched', '"Part 2" places on the single combined episode');
+  assert.equal(e(4), null);
+  assert.equal(e(5), null);
+  const reason = (k: string) => db.prepare(`SELECT reason || ':' || status FROM unmatched_watches WHERE source_key LIKE ?`).pluck().get(`plex://episode/${k}:%`) as string | undefined;
+  assert.match(reason('x4') ?? '', /No S1E7.*:open/);
+  assert.equal(reason('x5'), undefined, 'bonus files are never queued');
+  assert.equal(reason('x6'), undefined);
+  assert.equal(plex.fileTitle('C:\\a\\The.Blacklist.S04E08.1080p.WEB-DL.mkv'), null);
+  assert.equal(plex.fileTitle('C:\\a\\Star Wars The Clone Wars s03e21 (720p).mkv'), null);
+  assert.equal(plex.fileTitle('D:\\a\\Interview.with.the.Vampire.S03E04.The.Devils.Road.1080p.AMZN.WEB-DL.mkv'), 'The Devils Road');
+});
+
 test('a play within 6 hours of another counts once but both records are kept', () => {
   const id = showOf(20);
   const e = ep(id, 2).id;

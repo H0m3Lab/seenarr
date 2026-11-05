@@ -296,6 +296,26 @@ test('unclear matches go to review rather than being assigned', async () => {
   assert.equal(epOf(id, 1, 1).has_file, 0);
   assert.equal(count(`SELECT COUNT(*) FROM review_queue WHERE type = 'episode_mismatch' AND show_id = ? AND status = 'open'`, id), 1);
 
+  // Titles settle it: same title at the slot despite the dates, a renumbered episode, a two-parter listed once.
+  makeShow(510, 9510);
+  fake.episodes[510] = [
+    { ...tvEp(5101, 1, 1, -400), name: 'Hope, Deferred' },
+    { ...tvEp(5102, 1, 2, -300), name: 'Legacy' },
+    { ...tvEp(5103, 1, 3, -200), name: 'Family Reunion – and Farewell' },
+  ];
+  fake.series.push({ id: 9, title: 'ZZTEST Show 510', tvdbId: 9510, monitored: true });
+  fake.sonarrEpisodes[9] = [
+    { id: 91, seasonNumber: 1, episodeNumber: 1, title: 'Hope Deferred', hasFile: true, monitored: true, airDate: date(-20) },
+    { id: 92, seasonNumber: 1, episodeNumber: 7, title: 'Legacy', hasFile: true, monitored: true, airDate: date(-300) },
+    { id: 93, seasonNumber: 1, episodeNumber: 8, title: 'Family Reunion and Farewell (1)', hasFile: false, monitored: true, airDate: date(-200) },
+    { id: 94, seasonNumber: 1, episodeNumber: 9, title: 'Family Reunion and Farewell (2)', hasFile: true, monitored: true, airDate: date(-200) },
+  ];
+  await svc.syncSonarr();
+  await svc.syncMetadata();
+  const titled = showIdOf(510);
+  assert.deepEqual([1, 2, 3].map((n) => epOf(titled, 1, n).has_file), [1, 1, 1]);
+  assert.equal(count(`SELECT COUNT(*) FROM review_queue WHERE type = 'episode_mismatch' AND show_id = ? AND status = 'open'`, titled), 0);
+
   // A show TVmaze doesn't know keeps working from Sonarr's list.
   fake.series.push({ id: 8, title: 'ZZTEST Unknown', tvdbId: 9600, monitored: true });
   fake.sonarrEpisodes[8] = [{ id: 81, seasonNumber: 1, episodeNumber: 1, hasFile: true, monitored: true, airDate: date(-5) }];
