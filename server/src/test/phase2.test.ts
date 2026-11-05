@@ -351,6 +351,8 @@ test('bonus files are set aside; file and episode titles settle date and numberi
   assert.equal(plex.fileTitle('C:\\a\\The.Blacklist.S04E08.1080p.WEB-DL.mkv'), null);
   assert.equal(plex.fileTitle('C:\\a\\Star Wars The Clone Wars s03e21 (720p).mkv'), null);
   assert.equal(plex.fileTitle('D:\\a\\Interview.with.the.Vampire.S03E04.The.Devils.Road.1080p.AMZN.WEB-DL.mkv'), 'The Devils Road');
+  const { findByTitle } = await import('../services/link.js');
+  assert.equal(findByTitle([{ title: "The Devil's Road" }], 'The Devils Road')?.title, "The Devil's Road", 'apostrophes do not matter');
 });
 
 test('a play within 6 hours of another counts once but both records are kept', () => {

@@ -31,7 +31,7 @@ export const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date
 
 /** Episode title reduced for comparison: case, accents, punctuation and "&" don't matter. */
 export const titleKey = (t?: string | null) =>
-  (t ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+  (t ?? '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/['’`]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 
 // Placeholder titles say nothing about which episode it is.
 const GENERIC = /^(?:episode|chapter|part|ep)\s*\d+$|^(?:tba|tbd|untitled)$/;
