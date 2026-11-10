@@ -19,7 +19,15 @@ export function Availability({ available }: { available: boolean }) {
   return available ? <Badge kind="ok">Available</Badge> : null;
 }
 
-type Mode = 'continue' | 'new' | 'soon' | 'caught' | 'notStarted' | 'ended' | 'recent';
+const SOURCE_LABEL: Record<string, string> = {
+  manual: 'Marked by hand',
+  plex: 'Plex',
+  trakt: 'Trakt',
+  prime: 'Prime Video',
+  netflix: 'Netflix',
+};
+
+type Mode ='continue' | 'new' | 'soon' | 'caught' | 'notStarted' | 'ended' | 'recent';
 
 /** One dashboard row. What it says depends on the section it's in. */
 export function ShowRow({ show, mode }: { show: ShowSummary; mode: Mode }) {
@@ -52,6 +60,7 @@ export function ShowRow({ show, mode }: { show: ShowSummary; mode: Mode }) {
             <p>
               <strong>{epCode(p.lastWatched)}</strong>{p.lastWatched.title ? ` · ${p.lastWatched.title}` : ''}
               {p.lastWatched.watchedAt ? ` · ${fmtDate(p.lastWatched.watchedAt)}` : ''}
+              {p.lastWatched.source && <> <Badge kind="muted">{SOURCE_LABEL[p.lastWatched.source] ?? p.lastWatched.source}</Badge></>}
             </p>
             <p className="muted">{next ? `Next: ${epCode(next)} · ${p.remaining} left` : `Caught up · ${p.watched} of ${p.aired}`}</p>
           </>

@@ -35,7 +35,7 @@ export interface Progress {
   watched: number;
   remaining: number;
   percent: number;
-  lastWatched: (EpisodeBrief & { watchedAt: string | null }) | null;
+  lastWatched: (EpisodeBrief & { watchedAt: string | null; source: string | null }) | null;
   nextToWatch: EpisodeBrief | null;
   nextAfterLast: EpisodeBrief | null;
   nextToAir: EpisodeBrief | null;

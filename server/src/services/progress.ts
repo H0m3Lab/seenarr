@@ -37,7 +37,7 @@ export interface Progress {
   watched: number;
   remaining: number;
   percent: number;
-  lastWatched: (EpisodeBrief & { watchedAt: string | null }) | null;
+  lastWatched: (EpisodeBrief & { watchedAt: string | null; source: string | null }) | null;
   nextToWatch: EpisodeBrief | null;
   nextAfterLast: EpisodeBrief | null; // only when it differs from nextToWatch (you skipped something)
   nextToAir: EpisodeBrief | null;
@@ -97,7 +97,7 @@ export function computeProgress(all: EpisodeRow[], now = new Date()): Progress {
     watched: watchedAired.length,
     remaining: unwatchedAired.length,
     percent: aired.length ? Math.floor((watchedAired.length / aired.length) * 100) : 0,
-    lastWatched: last ? { ...brief(last), watchedAt: last.occurred_at_utc } : null,
+    lastWatched: last ? { ...brief(last), watchedAt: last.occurred_at_utc, source: last.source } : null,
     nextToWatch: next ? brief(next) : null,
     nextAfterLast: after && next && after.id !== next.id ? brief(after) : null,
     nextToAir: toAir ? brief(toAir) : null,
