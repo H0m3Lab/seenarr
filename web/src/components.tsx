@@ -19,7 +19,7 @@ export function Availability({ available }: { available: boolean }) {
   return available ? <Badge kind="ok">Available</Badge> : null;
 }
 
-type Mode = 'continue' | 'new' | 'soon' | 'caught' | 'notStarted' | 'ended';
+type Mode = 'continue' | 'new' | 'soon' | 'caught' | 'notStarted' | 'ended' | 'recent';
 
 /** One dashboard row. What it says depends on the section it's in. */
 export function ShowRow({ show, mode }: { show: ShowSummary; mode: Mode }) {
@@ -47,7 +47,16 @@ export function ShowRow({ show, mode }: { show: ShowSummary; mode: Mode }) {
         {mode === 'soon' && toAir && <p><strong>{fmtAir(toAir)}</strong> · {epCode(toAir)}{toAir.title ? ` · ${toAir.title}` : ''}</p>}
         {mode === 'caught' && <p className="muted">Caught up · {p.watched} of {p.aired}{toAir ? ` · next airs ${fmtAir(toAir)}` : ''}</p>}
         {mode === 'notStarted' && <p className="muted">{p.aired} aired · {show.status}</p>}
-        {mode === 'ended' && <><p className="muted">{show.status} · {p.percent}% complete ({p.watched} of {p.aired})</p><ProgressBar percent={p.percent} /></>}
+        {mode === 'recent' && p.lastWatched && (
+          <>
+            <p>
+              <strong>{epCode(p.lastWatched)}</strong>{p.lastWatched.title ? ` · ${p.lastWatched.title}` : ''}
+              {p.lastWatched.watchedAt ? ` · ${fmtDate(p.lastWatched.watchedAt)}` : ''}
+            </p>
+            <p className="muted">{next ? `Next: ${epCode(next)} · ${p.remaining} left` : `Caught up · ${p.watched} of ${p.aired}`}</p>
+          </>
+        )}
+        {mode === 'ended' &&<><p className="muted">{show.status} · {p.percent}% complete ({p.watched} of {p.aired})</p><ProgressBar percent={p.percent} /></>}
       </div>
     </Link>
   );

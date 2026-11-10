@@ -11,6 +11,7 @@ import { AddShow } from './pages/AddShow';
 import { Settings } from './pages/Settings';
 import { ReviewPage } from './pages/Review';
 import { ImportPage } from './pages/Import';
+import { RecentPage } from './pages/Recent';
 import './styles.css';
 
 const client = new QueryClient({
@@ -35,6 +36,7 @@ function App() {
         <NavLink to="/" className="brand">TV Tracker</NavLink>
         <nav>
           <NavLink to="/" end>Dashboard</NavLink>
+          <NavLink to="/recent">Recently Watched</NavLink>
           <NavLink to="/shows">My Shows</NavLink>
           <NavLink to="/add">Add Show</NavLink>
           <NavLink to="/import">Import</NavLink>
@@ -51,6 +53,7 @@ function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/import" element={<ImportPage />} />
+          <Route path="/recent" element={<RecentPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
