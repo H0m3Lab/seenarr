@@ -12,12 +12,13 @@ const watchFor = (s: ShowSummary, source: string): LastWatch | undefined =>
 
 function byRecent(shows: ShowSummary[], source: string) {
   return shows
+    .filter((s) => s.tracking_state !== 'archived')
     .map((show) => ({ show, watch: watchFor(show, source) }))
     .filter((r): r is { show: ShowSummary; watch: LastWatch } => !!r.watch?.watchedAt)
     .sort((a, b) => b.watch.watchedAt!.localeCompare(a.watch.watchedAt!));
 }
 
-/** Shows ordered by their latest dated watch, newest first. Undated watches can't be placed, so they're left out. */
+/** Shows ordered by their latest dated watch, newest first. Undated watches can't be placed, and archived shows are hidden. */
 export function RecentPage() {
   const [params, setParams] = useSearchParams();
   const source = params.get('source') ?? '';
