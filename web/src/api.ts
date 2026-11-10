@@ -30,12 +30,15 @@ export interface EpisodeBrief {
   available: boolean;
 }
 
+export type LastWatch = EpisodeBrief & { watchedAt: string | null; source: string | null };
+
 export interface Progress {
   aired: number;
   watched: number;
   remaining: number;
   percent: number;
-  lastWatched: (EpisodeBrief & { watchedAt: string | null; source: string | null }) | null;
+  lastWatched: LastWatch | null;
+  lastBySource: Record<string, LastWatch>;
   nextToWatch: EpisodeBrief | null;
   nextAfterLast: EpisodeBrief | null;
   nextToAir: EpisodeBrief | null;

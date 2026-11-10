@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { epCode, fmtAir, fmtDate, type ShowSummary } from './api';
+import { epCode, fmtAir, fmtDate, type LastWatch, type ShowSummary } from './api';
 
 export function Poster({ show }: { show: Pick<ShowSummary, 'poster_file' | 'title'> }) {
   return show.poster_file
@@ -19,7 +19,7 @@ export function Availability({ available }: { available: boolean }) {
   return available ? <Badge kind="ok">Available</Badge> : null;
 }
 
-const SOURCE_LABEL: Record<string, string> = {
+export const SOURCE_LABEL:Record<string, string> = {
   manual: 'Marked by hand',
   plex: 'Plex',
   trakt: 'Trakt',
@@ -30,8 +30,9 @@ const SOURCE_LABEL: Record<string, string> = {
 type Mode ='continue' | 'new' | 'soon' | 'caught' | 'notStarted' | 'ended' | 'recent';
 
 /** One dashboard row. What it says depends on the section it's in. */
-export function ShowRow({ show, mode }: { show: ShowSummary; mode: Mode }) {
+export function ShowRow({ show, mode, watch }: { show: ShowSummary; mode: Mode; watch?: LastWatch }) {
   const p = show.progress;
+  const seen = watch ?? p.lastWatched;
   const next = p.nextToWatch;
   const toAir = p.nextToAir;
   return (
@@ -55,12 +56,12 @@ export function ShowRow({ show, mode }: { show: ShowSummary; mode: Mode }) {
         {mode === 'soon' && toAir && <p><strong>{fmtAir(toAir)}</strong> · {epCode(toAir)}{toAir.title ? ` · ${toAir.title}` : ''}</p>}
         {mode === 'caught' && <p className="muted">Caught up · {p.watched} of {p.aired}{toAir ? ` · next airs ${fmtAir(toAir)}` : ''}</p>}
         {mode === 'notStarted' && <p className="muted">{p.aired} aired · {show.status}</p>}
-        {mode === 'recent' && p.lastWatched && (
+        {mode === 'recent' && seen && (
           <>
             <p>
-              <strong>{epCode(p.lastWatched)}</strong>{p.lastWatched.title ? ` · ${p.lastWatched.title}` : ''}
-              {p.lastWatched.watchedAt ? ` · ${fmtDate(p.lastWatched.watchedAt)}` : ''}
-              {p.lastWatched.source && <> <Badge kind="muted">{SOURCE_LABEL[p.lastWatched.source] ?? p.lastWatched.source}</Badge></>}
+              <strong>{epCode(seen)}</strong>{seen.title ? ` · ${seen.title}` : ''}
+              {seen.watchedAt ? ` · ${fmtDate(seen.watchedAt)}` : ''}
+              {seen.source && <> <Badge kind="muted">{SOURCE_LABEL[seen.source] ?? seen.source}</Badge></>}
             </p>
             <p className="muted">{next ? `Next: ${epCode(next)} · ${p.remaining} left` : `Caught up · ${p.watched} of ${p.aired}`}</p>
           </>

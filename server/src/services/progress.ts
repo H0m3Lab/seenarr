@@ -32,12 +32,15 @@ export interface EpisodeBrief {
   available: boolean;
 }
 
+export type LastWatch = EpisodeBrief & { watchedAt: string | null; source: string | null };
+
 export interface Progress {
   aired: number;
   watched: number;
   remaining: number;
   percent: number;
-  lastWatched: (EpisodeBrief & { watchedAt: string | null; source: string | null }) | null;
+  lastWatched: LastWatch | null;
+  lastBySource: Record<string, LastWatch>;
   nextToWatch: EpisodeBrief | null;
   nextAfterLast: EpisodeBrief | null; // only when it differs from nextToWatch (you skipped something)
   nextToAir: EpisodeBrief | null;
@@ -78,14 +81,18 @@ export function computeProgress(all: EpisodeRow[], now = new Date()): Progress {
   // Latest dated watch wins; if nothing is dated, fall back to the furthest episode watched.
   const watchedAll = regular.filter((e) => e.state === 'watched');
   const dated = watchedAll.filter((e) => e.occurred_at_utc);
-  let last: EpisodeRow | undefined;
-  if (dated.length) {
-    last = dated.reduce((best, e) => {
+  const latest = (list: EpisodeRow[]) =>
+    list.reduce((best, e) => {
       const cmp = e.occurred_at_utc!.localeCompare(best.occurred_at_utc!);
       return cmp > 0 || (cmp === 0 && inOrder(e, best) > 0) ? e : best;
     });
-  } else {
-    last = watchedAll[watchedAll.length - 1];
+  const last: EpisodeRow | undefined = dated.length ? latest(dated) : watchedAll[watchedAll.length - 1];
+
+  // Latest dated watch from each source, for "recently watched on Plex" style filters.
+  const lastBySource: Record<string, LastWatch> = {};
+  for (const src of new Set(dated.map((e) => e.source).filter((s): s is string => !!s))) {
+    const e = latest(dated.filter((d) => d.source === src));
+    lastBySource[src] = { ...brief(e), watchedAt: e.occurred_at_utc, source: e.source };
   }
 
   const next = unwatchedAired[0] ?? null;
@@ -98,6 +105,7 @@ export function computeProgress(all: EpisodeRow[], now = new Date()): Progress {
     remaining: unwatchedAired.length,
     percent: aired.length ? Math.floor((watchedAired.length / aired.length) * 100) : 0,
     lastWatched: last ? { ...brief(last), watchedAt: last.occurred_at_utc, source: last.source } : null,
+    lastBySource,
     nextToWatch: next ? brief(next) : null,
     nextAfterLast: after && next && after.id !== next.id ? brief(after) : null,
     nextToAir: toAir ? brief(toAir) : null,
