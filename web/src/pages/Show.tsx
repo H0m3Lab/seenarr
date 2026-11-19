@@ -111,7 +111,7 @@ export function ShowPage() {
   const deleteShow = () => {
     const watched = show.episodes.filter((e) => e.state === 'watched').length;
     const warning = watched
-      ? `Delete ${show.title}?\n\nThis removes the show and its watch history (${watched} watched episode${watched === 1 ? '' : 's'}) from TV Tracker. Sonarr and Plex syncs won't bring it back; adding it again through Add Show will.`
+      ? `Delete ${show.title}?\n\nThis removes the show and its watch history (${watched} watched episode${watched === 1 ? '' : 's'}) from Seenarr. Sonarr and Plex syncs won't bring it back; adding it again through Add Show will.`
       : `Delete ${show.title}?\n\nIt has no watch history. Sonarr and Plex syncs won't bring it back; adding it again through Add Show will.`;
     if (!confirm(warning)) return;
     if (watched && prompt(`Type the show's name to confirm:\n\n${show.title}`)?.trim().toLowerCase() !== show.title.toLowerCase()) {

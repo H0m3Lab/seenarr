@@ -23,7 +23,7 @@ export function Login() {
 
   return (
     <form className="login" onSubmit={submit}>
-      <h1>TV Tracker</h1>
+      <h1>Seenarr</h1>
       <label>
         Password
         <input type="password" autoFocus autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />

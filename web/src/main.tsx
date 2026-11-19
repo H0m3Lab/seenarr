@@ -33,7 +33,7 @@ function App() {
   return (
     <BrowserRouter>
       <header className="topbar">
-        <NavLink to="/" className="brand">TV Tracker</NavLink>
+        <NavLink to="/" className="brand">Seenarr</NavLink>
         <nav>
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/recent">Recently Watched</NavLink>

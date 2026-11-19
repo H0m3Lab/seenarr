@@ -121,7 +121,7 @@ export function ImportPage() {
 
   const confirmApply = () => {
     if (!preview) return;
-    if (confirm(`Add ${preview.toAdd} Prime Video watch${preview.toAdd === 1 ? '' : 'es'} to TV Tracker?\n\nA copy of the database is saved first. Nothing unplaced or from missing shows is added.`)) apply.mutate();
+    if (confirm(`Add ${preview.toAdd} Prime Video watch${preview.toAdd === 1 ? '' : 'es'} to Seenarr?\n\nA copy of the database is saved first. Nothing unplaced or from missing shows is added.`)) apply.mutate();
   };
 
   return (
