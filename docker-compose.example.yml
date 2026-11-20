@@ -1,0 +1,24 @@
+# Seenarr - copy to docker-compose.yml and adjust. Secrets go in .env (see .env.example).
+services:
+  seenarr:
+    build: .
+    image: seenarr:local
+    container_name: seenarr
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    env_file: .env
+    environment:
+      TZ: America/New_York
+      DATA_DIR: /data
+      COOKIE_SECURE: "false"           # "true" when served over HTTPS (reverse proxy)
+      SONARR_URL: http://sonarr:8989
+      PLEX_URL: http://your-plex-host:32400
+      PLEX_ACCOUNT_ID: "1"             # 1 = the Plex server owner; other accounts' plays are ignored
+    ports:
+      - "8210:3000"
+    volumes:
+      - /path/to/appdata/seenarr:/data # the database (back this up); must be writable by uid 1000
