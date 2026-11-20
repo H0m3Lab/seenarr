@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-19
+
+Security update. No changes to settings or data; upgrading is a rebuild (`docker compose build && docker compose up -d`).
+
+### Security
+- `@fastify/static` 8 → 10: fixes path traversal in directory listing, route guard bypass via
+  encoded path separators, and authorization bypass via non-canonical URL paths. Pulls in fixed
+  `glob` and `minimatch` (filesystem traversal after timeout, denial of service).
+- `zod` 3 → 4: fixes memory exhaustion while validating oversized collections. Validation errors
+  keep the same `{"error": "Invalid input", "issues": [...]}` shape; issue messages are worded differently.
+- `react-router-dom` 6 → 7: fixes an open redirect via backslashes in links and navigation.
+- `npm audit` now reports no known vulnerabilities in production dependencies.
+
 ## [0.1.0] - 2026-11-19
 
 First public release.
@@ -25,5 +38,6 @@ First public release.
 - Docker image, example Compose file, `.env.example`, MIT license.
 - Project docs (CLAUDE.md, this changelog), CI (build, tests, Docker build, secret scan), `npm test`.
 
-[Unreleased]: https://github.com/H0m3Lab/seenarr/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/H0m3Lab/seenarr/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/H0m3Lab/seenarr/releases/tag/v0.1.1
 [0.1.0]: https://github.com/H0m3Lab/seenarr/releases/tag/v0.1.0
