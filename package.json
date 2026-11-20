@@ -4,6 +4,7 @@
   "private": true,
   "workspaces": ["server", "web"],
   "scripts": {
-    "build": "npm run build -w web && npm run build -w server"
+    "build": "npm run build -w web && npm run build -w server",
+    "test": "node --test \"server/dist/test/*.test.js\""
   }
 }

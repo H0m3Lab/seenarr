@@ -62,10 +62,30 @@ or use `sqlite3 tv-tracker.db ".backup copy.db"` for a consistent copy while it 
 
 ## Development
 
-Fastify + TypeScript server, React + Vite + TanStack Query front end, better-sqlite3. Tests run against the built
-image: `docker run --rm seenarr:local node --test 'server/dist/test/*.test.js'`.
+Fastify + TypeScript server, React + Vite + TanStack Query front end, better-sqlite3. With Node 22:
+`npm ci && npm run build && npm test`. Or run the tests in the built image:
+`docker run --rm seenarr:local node --test 'server/dist/test/*.test.js'`.
 The internal name is still `tv-tracker` (package names, database file, container); only the display name
-is Seenarr.
+is Seenarr. Architecture and rules for contributors (and AI agents) are in [CLAUDE.md](CLAUDE.md).
+
+## Troubleshooting
+
+- **Login fails right after logging in (no session):** `COOKIE_SECURE=true` only works over HTTPS. Use
+  `false` on plain HTTP.
+- **Plex plays don't show up:** check `PLEX_URL`, `PLEX_TOKEN`, and `PLEX_ACCOUNT_ID` (only that account's
+  plays count). Plays Seenarr can't place with confidence wait on the **Review** page.
+- **A deleted show doesn't come back from Sonarr:** that's intended. Deletions are remembered so syncs
+  can't re-create them.
+- **Container can't write the database:** the data folder must be writable by uid 1000 (see the
+  example Compose file).
+- Logs: `docker compose logs seenarr`.
+
+## Releases and contributing
+
+Versions and changes: [Releases](https://github.com/H0m3Lab/seenarr/releases) and [CHANGELOG.md](CHANGELOG.md).
+Bug reports and ideas are welcome as issues; see the
+[contribution guide](https://github.com/H0m3Lab/.github/blob/main/CONTRIBUTING.md). Report security
+problems privately through the **Security** tab.
 
 ## License
 

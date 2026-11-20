@@ -1,0 +1,21 @@
+{
+  "name": "Seenarr",
+  "slug": "seenarr",
+  "tagline": "A self-hosted, permanent TV watch history. A Trakt replacement that you own.",
+  "description": "Seenarr keeps a complete record of every episode you've watched, fed automatically from Plex and organised by your Sonarr library, with episode data from TVmaze. Your history lives in one SQLite file on your own server.",
+  "status": "early",
+  "features": [
+    "Continue Watching, new episodes and Coming Soon dashboard",
+    "Automatic Plex history sync and optional webhook",
+    "Sonarr library as your show list",
+    "Trakt and Prime Video history imports with preview",
+    "Review queue instead of guessing",
+    "Append-only watch history that resyncs cannot undo"
+  ],
+  "stack": ["TypeScript", "Fastify", "React", "Vite", "SQLite", "Docker"],
+  "repository": "https://github.com/H0m3Lab/seenarr",
+  "documentation": "https://github.com/H0m3Lab/seenarr#readme",
+  "changelog": "https://github.com/H0m3Lab/seenarr/blob/main/CHANGELOG.md",
+  "license": "MIT",
+  "screenshots": []
+}
